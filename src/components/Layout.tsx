@@ -127,7 +127,7 @@ export default function Layout() {
               trigger={() => (
                 <button type="button" className="flex items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-black/5">
                   <span className="hidden text-sm text-[#555] md:inline">{currentUser.name}</span>
-                  <Avatar name={currentUser.name} size={30} />
+                  <Avatar name={currentUser.name} size={30} src={user.avatarUrl} />
                 </button>
               )}
             >

@@ -1,7 +1,7 @@
 # Jamify
 
 Jamify is a time tracker inspired by [Clockify](https://clockify.me), built with React 19, TypeScript, Vite and Tailwind CSS v4.
-Data is stored in [Supabase](https://supabase.com) (Postgres + Auth): each user signs in with email and password and gets
+Data is stored in [Supabase](https://supabase.com) (Postgres + Auth): each user signs in with email and password or Google and gets
 their own workspace, isolated by row level security. A fresh workspace is seeded with demo data on first sign-in.
 
 ## Features
@@ -30,6 +30,12 @@ Open http://localhost:5173. Without a `.env.local` the app uses the built-in Sup
 The schema lives in the project's migrations (`workspaces`, `members`, `clients`, `projects`, `tasks`, `tags`, `time_entries`),
 all protected by RLS policies of the form `user_id = auth.uid()`. To use your own project, apply the same schema and set
 `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+
+## Google sign-in
+
+Enable the Google provider in Supabase (Authentication → Providers → Google) with an OAuth client from Google Cloud whose
+authorized redirect URI is `https://<project-ref>.supabase.co/auth/v1/callback`, and add the app origins
+(`https://jamify-pi.vercel.app`, `http://localhost:5173`) to Authentication → URL Configuration → Redirect URLs.
 
 ## Deploy
 

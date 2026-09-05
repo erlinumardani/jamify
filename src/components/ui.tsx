@@ -144,9 +144,12 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
   )
 }
 
-export function Avatar({ name, size = 32, className }: { name: string; size?: number; className?: string }) {
+export function Avatar({ name, size = 32, className, src }: { name: string; size?: number; className?: string; src?: string | null }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join('')
   const hue = [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360
+  if (src) {
+    return <img src={src} alt={name} referrerPolicy="no-referrer" className={cn('shrink-0 rounded-full object-cover', className)} style={{ width: size, height: size }} />
+  }
   return (
     <span
       className={cn('inline-flex shrink-0 items-center justify-center rounded-full font-medium text-white', className)}
