@@ -77,7 +77,7 @@ export default function Layout() {
           <Settings size={18} strokeWidth={1.75} />
           Settings
         </NavLink>
-        <a href="https://github.com/erlinumardani/clockify-clone#readme" target="_blank" rel="noreferrer" className="flex items-center gap-3 border-l-[3px] border-transparent py-2 pl-[17px] pr-4 text-sm text-[#555] hover:bg-black/[0.03]">
+        <a href="https://github.com/erlinumardani/jamify#readme" target="_blank" rel="noreferrer" className="flex items-center gap-3 border-l-[3px] border-transparent py-2 pl-[17px] pr-4 text-sm text-[#555] hover:bg-black/[0.03]">
           <HelpCircle size={18} strokeWidth={1.75} />
           Help
         </a>
