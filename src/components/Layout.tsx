@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  BarChart3, Briefcase, Calendar, ChevronDown, Clock, FolderKanban, LayoutDashboard,
-  Menu, Settings, Square, Table2, Tag, Users, X, HelpCircle, LogOut, AlertTriangle,
+  AlertTriangle, BarChart3, Briefcase, Calendar, CalendarRange, ChevronDown, ClipboardCheck, Clock, FileText, FolderKanban,
+  HelpCircle, LayoutDashboard, LogOut, Menu, Palmtree, Receipt, Settings, Square, Table2, Tag, Users, X,
 } from 'lucide-react'
 import { useStore } from '../store'
 import { useAuth } from '../auth'
@@ -14,10 +14,15 @@ const nav = [
     { to: '/tracker', label: 'Time Tracker', icon: Clock },
     { to: '/calendar', label: 'Calendar', icon: Calendar },
     { to: '/timesheet', label: 'Timesheet', icon: Table2 },
+    { to: '/approvals', label: 'Approvals', icon: ClipboardCheck },
+    { to: '/time-off', label: 'Time Off', icon: Palmtree },
+    { to: '/schedule', label: 'Schedule', icon: CalendarRange },
   ]},
   { section: 'Analyze', items: [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/reports', label: 'Reports', icon: BarChart3 },
+    { to: '/expenses', label: 'Expenses', icon: Receipt },
+    { to: '/invoices', label: 'Invoices', icon: FileText },
   ]},
   { section: 'Manage', items: [
     { to: '/projects', label: 'Projects', icon: FolderKanban },
@@ -27,12 +32,19 @@ const nav = [
   ]},
 ]
 
+const linkCls = (isActive: boolean) =>
+  cn(
+    'flex items-center gap-3 border-l-[3px] py-1.5 pl-[17px] pr-4 text-sm transition-colors',
+    isActive ? 'border-ck-blue bg-ck-blue-light text-ck-blue-dark' : 'border-transparent text-[#555] hover:bg-black/[0.03] hover:text-ck-text',
+  )
+
 export default function Layout() {
   const { state, running, now, currentUser, stopTimer, syncError, clearSyncError } = useStore()
   const { user, signOut } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const showMiniTimer = running && !location.pathname.startsWith('/tracker')
+  const pending = state.approvals.filter((a) => a.status === 'Pending').length + state.timeOffRequests.filter((r) => r.status === 'Pending').length
 
   const sidebar = (
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-ck-border-light bg-ck-sidebar">
@@ -43,41 +55,26 @@ export default function Layout() {
           <X size={18} />
         </button>
       </div>
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav className="flex-1 overflow-y-auto py-1">
         {nav.map((group) => (
-          <div key={group.section} className="mb-3">
+          <div key={group.section} className="mb-2">
             <div className="px-5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-ck-muted">{group.section}</div>
             {group.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setMobileOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 border-l-[3px] py-2 pl-[17px] pr-4 text-sm transition-colors',
-                    isActive ? 'border-ck-blue bg-ck-blue-light text-ck-blue-dark' : 'border-transparent text-[#555] hover:bg-black/[0.03] hover:text-ck-text',
-                  )
-                }
-              >
+              <NavLink key={item.to} to={item.to} onClick={() => setMobileOpen(false)} className={({ isActive }) => linkCls(isActive)}>
                 <item.icon size={18} strokeWidth={1.75} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.to === '/approvals' && pending > 0 && <span className="rounded-full bg-ck-blue px-1.5 text-[10px] font-medium text-white">{pending}</span>}
               </NavLink>
             ))}
           </div>
         ))}
       </nav>
       <div className="border-t border-ck-border-light py-2">
-        <NavLink
-          to="/settings"
-          onClick={() => setMobileOpen(false)}
-          className={({ isActive }) =>
-            cn('flex items-center gap-3 border-l-[3px] py-2 pl-[17px] pr-4 text-sm', isActive ? 'border-ck-blue bg-ck-blue-light text-ck-blue-dark' : 'border-transparent text-[#555] hover:bg-black/[0.03]')
-          }
-        >
+        <NavLink to="/settings" onClick={() => setMobileOpen(false)} className={({ isActive }) => linkCls(isActive)}>
           <Settings size={18} strokeWidth={1.75} />
           Settings
         </NavLink>
-        <a href="https://github.com/erlinumardani/jamify#readme" target="_blank" rel="noreferrer" className="flex items-center gap-3 border-l-[3px] border-transparent py-2 pl-[17px] pr-4 text-sm text-[#555] hover:bg-black/[0.03]">
+        <a href="https://github.com/erlinumardani/jamify#readme" target="_blank" rel="noreferrer" className={linkCls(false)}>
           <HelpCircle size={18} strokeWidth={1.75} />
           Help
         </a>
@@ -100,11 +97,11 @@ export default function Layout() {
           <button type="button" className="text-[#555] lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
             <Menu size={22} />
           </button>
-          <button type="button" className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-sm font-medium hover:bg-black/5">
+          <NavLink to="/settings" className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-sm font-medium hover:bg-black/5">
             <span className="max-w-[200px] truncate">{state.settings.workspaceName}</span>
             <ChevronDown size={16} className="text-ck-muted" />
-          </button>
-          <span className="hidden rounded-sm bg-ck-blue-light px-2 py-0.5 text-[11px] font-medium uppercase text-ck-blue-dark sm:inline">Free</span>
+          </NavLink>
+          <span className="hidden rounded-sm bg-ck-blue-light px-2 py-0.5 text-[11px] font-medium uppercase text-ck-blue-dark sm:inline">Pro</span>
 
           <div className="ml-auto flex items-center gap-3">
             {showMiniTimer && (

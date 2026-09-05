@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { addWeeks, format, isSameDay } from 'date-fns'
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
-import { useStore } from '../store'
-import { Button, PageHeader, Popover, cn } from '../components/ui'
+import { ChevronLeft, ChevronRight, Lock, Plus, Send, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useStore, uid } from '../store'
+import { Badge, Button, PageHeader, Popover, cn } from '../components/ui'
 import { ProjectLabel, ProjectMenu } from '../components/ProjectPicker'
-import { formatDuration, parseDuration, sumSeconds, weekDays, weekLabel } from '../lib/time'
+import { formatDuration, parseDuration, sumSeconds, toDateKey, weekDays, weekLabel } from '../lib/time'
 import type { TimeEntry } from '../types'
 
 interface Row { projectId: string | null; taskId: string | null }
@@ -17,6 +18,10 @@ export default function Timesheet() {
   const [extraRows, setExtraRows] = useState<Row[]>([])
   const days = useMemo(() => weekDays(anchor, settings.weekStart), [anchor, settings.weekStart])
   const today = new Date()
+  const weekKey = toDateKey(days[0])
+  const approval = state.approvals.find((a) => a.memberId === state.currentUserId && a.weekStart === weekKey)
+  const dayLocked = (d: Date) => !!settings.lockBefore && toDateKey(d) < settings.lockBefore
+  const weekLocked = days.every(dayLocked) || approval?.status === 'Approved' || approval?.status === 'Pending'
 
   const weekEntries = useMemo(() => {
     const from = days[0].getTime()
@@ -69,13 +74,21 @@ export default function Timesheet() {
     }
   }
 
+  const submit = () =>
+    dispatch({ type: 'col/add', col: 'approvals', row: { id: uid(), memberId: state.currentUserId, weekStart: weekKey, status: 'Pending', note: '', submittedAt: new Date().toISOString(), decidedAt: null } })
+
   const dayTotals = days.map((d) => sumSeconds(weekEntries.filter((e) => isSameDay(new Date(e.start), d))))
   const weekTotal = sumSeconds(weekEntries)
 
   return (
     <div>
       <PageHeader title="Timesheet">
-        <Button variant="outline" size="sm" onClick={copyLastWeek}>Copy last week</Button>
+        {approval ? (
+          <Link to="/approvals" className="inline-flex items-center gap-2 text-sm"><Badge tone={approval.status === 'Approved' ? 'green' : approval.status === 'Rejected' ? 'gray' : 'orange'}>{approval.status}</Badge><span className="text-ck-blue hover:underline">View approvals</span></Link>
+        ) : (
+          <Button variant="outline" size="sm" onClick={submit} disabled={weekTotal === 0}><Send size={13} /> Submit for approval</Button>
+        )}
+        <Button variant="outline" size="sm" onClick={copyLastWeek} disabled={weekLocked}>Copy last week</Button>
       </PageHeader>
 
       <div className="ck-card overflow-hidden">
@@ -86,6 +99,7 @@ export default function Timesheet() {
             <button type="button" className="px-2 py-1.5 hover:bg-ck-bg" onClick={() => setAnchor(addWeeks(anchor, 1))} aria-label="Next week"><ChevronRight size={16} /></button>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setAnchor(new Date())}>Today</Button>
+          {weekLocked && <span className="inline-flex items-center gap-1 text-xs text-ck-muted"><Lock size={12} /> {approval?.status === 'Pending' ? 'Submitted, waiting for approval' : approval?.status === 'Approved' ? 'Approved and locked' : 'Locked'}</span>}
           <span className="ml-auto text-sm text-[#666]">Week total: <span className="font-mono text-ck-text">{formatDuration(weekTotal, settings.durationFormat)}</span></span>
         </div>
 
@@ -96,7 +110,7 @@ export default function Timesheet() {
                 <th className="w-[280px]">Project</th>
                 {days.map((d) => (
                   <th key={d.toISOString()} className={cn('text-center', isSameDay(d, today) && 'text-ck-blue')}>
-                    <div>{format(d, 'EEE')}</div>
+                    <div className="inline-flex items-center gap-1">{format(d, 'EEE')}{dayLocked(d) && <Lock size={10} className="text-ck-muted" />}</div>
                     <div className="font-normal normal-case tracking-normal">{format(d, 'MMM d')}</div>
                   </th>
                 ))}
@@ -117,31 +131,33 @@ export default function Timesheet() {
                       </div>
                     </td>
                     {days.map((d) => (
-                      <td key={d.toISOString()} className={cn('p-1', isSameDay(d, today) && 'bg-ck-blue-light/40')}>
-                        <Cell value={sumSeconds(cellEntries(r, d))} onCommit={(s) => setCell(r, d, s)} fmt={settings.durationFormat} />
+                      <td key={d.toISOString()} className={cn('p-1', isSameDay(d, today) && 'bg-ck-blue-light/40', dayLocked(d) && 'bg-ck-bg/60')}>
+                        <Cell value={sumSeconds(cellEntries(r, d))} onCommit={(s) => setCell(r, d, s)} fmt={settings.durationFormat} disabled={weekLocked || dayLocked(d)} />
                       </td>
                     ))}
                     <td className="text-right font-mono">{formatDuration(rowSecs, settings.durationFormat)}</td>
                     <td className="text-center">
-                      <button type="button" className="text-ck-muted hover:text-ck-red" onClick={() => removeRow(r)} title="Remove row"><X size={16} /></button>
+                      <button type="button" className="text-ck-muted hover:text-ck-red disabled:opacity-30" disabled={weekLocked} onClick={() => removeRow(r)} title="Remove row"><X size={16} /></button>
                     </td>
                   </tr>
                 )
               })}
-              <tr>
-                <td colSpan={10} className="py-1.5">
-                  <Popover
-                    width={320}
-                    trigger={() => (
-                      <button type="button" className="inline-flex items-center gap-1 text-sm text-ck-blue hover:underline"><Plus size={14} /> Select project</button>
-                    )}
-                  >
-                    {(close) => (
-                      <ProjectMenu value={{ projectId: null, taskId: null }} onChange={(v) => { setExtraRows((rs) => [...rs, v]); close() }} />
-                    )}
-                  </Popover>
-                </td>
-              </tr>
+              {!weekLocked && (
+                <tr>
+                  <td colSpan={10} className="py-1.5">
+                    <Popover
+                      width={320}
+                      trigger={() => (
+                        <button type="button" className="inline-flex items-center gap-1 text-sm text-ck-blue hover:underline"><Plus size={14} /> Select project</button>
+                      )}
+                    >
+                      {(close) => (
+                        <ProjectMenu value={{ projectId: null, taskId: null }} onChange={(v) => { setExtraRows((rs) => [...rs, v]); close() }} />
+                      )}
+                    </Popover>
+                  </td>
+                </tr>
+              )}
             </tbody>
             <tfoot>
               <tr className="bg-ck-bg/60 font-medium">
@@ -154,12 +170,12 @@ export default function Timesheet() {
           </table>
         </div>
       </div>
-      <p className="mt-3 text-xs text-ck-muted">Tip: type durations like <code>1:30</code>, <code>1h 30m</code>, or <code>1.5</code>. Editing a cell replaces that day's entries for the project with a single entry starting at 09:00.</p>
+      <p className="mt-3 text-xs text-ck-muted">Tip: type durations like <code>1:30</code>, <code>1h 30m</code>, or <code>1.5</code>. Editing a cell replaces that day's entries for the project with a single entry starting at 09:00. Submitted and approved weeks are read-only.</p>
     </div>
   )
 }
 
-function Cell({ value, onCommit, fmt }: { value: number; onCommit: (s: number) => void; fmt: 'full' | 'compact' | 'decimal' }) {
+function Cell({ value, onCommit, fmt, disabled }: { value: number; onCommit: (s: number) => void; fmt: 'full' | 'compact' | 'decimal'; disabled?: boolean }) {
   const display = value ? formatDuration(value, fmt) : ''
   const [text, setText] = useState<string | null>(null)
   const commit = () => {
@@ -171,8 +187,9 @@ function Cell({ value, onCommit, fmt }: { value: number; onCommit: (s: number) =
   }
   return (
     <input
-      className="h-9 w-full rounded-sm border border-transparent bg-transparent text-center font-mono text-sm outline-none hover:border-ck-border focus:border-ck-blue focus:bg-white"
-      placeholder="0:00"
+      className="h-9 w-full rounded-sm border border-transparent bg-transparent text-center font-mono text-sm outline-none hover:border-ck-border focus:border-ck-blue focus:bg-white disabled:text-ck-muted disabled:hover:border-transparent"
+      placeholder={disabled ? '' : '0:00'}
+      disabled={disabled}
       value={text ?? display}
       onFocus={() => setText(display)}
       onChange={(e) => setText(e.target.value)}

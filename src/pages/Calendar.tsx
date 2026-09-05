@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, addWeeks, format, isSameDay } from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Lock } from 'lucide-react'
 import { useStore } from '../store'
 import { Button, PageHeader, cn } from '../components/ui'
 import { EntryModal, type EntryModalTarget } from '../components/EntryModal'
-import { entrySeconds, formatDuration, formatTime, sumSeconds, weekDays, weekLabel } from '../lib/time'
+import { entrySeconds, formatDuration, formatTime, sumSeconds, toDateKey, weekDays, weekLabel } from '../lib/time'
 import type { TimeEntry } from '../types'
 
 const HOUR_PX = 56
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 export default function CalendarPage() {
-  const { state, now, projectById, tagById } = useStore()
+  const { state, now, projectById, tagById, memberById, isLocked } = useStore()
   const { settings } = state
   const [anchor, setAnchor] = useState(() => new Date())
   const [view, setView] = useState<'week' | 'day'>('week')
@@ -29,8 +29,14 @@ export default function CalendarPage() {
     () => days.map((d) => state.entries.filter((e) => isSameDay(new Date(e.start), d))),
     [days, state.entries],
   )
+  const timeOffByDay = useMemo(
+    () => days.map((d) => { const k = toDateKey(d); return state.timeOffRequests.filter((r) => r.status === 'Approved' && r.startDate <= k && r.endDate >= k) }),
+    [days, state.timeOffRequests],
+  )
+  const dayLocked = (d: Date) => !!settings.lockBefore && toDateKey(d) < settings.lockBefore
 
   const openNew = (day: Date, hourFloat: number) => {
+    if (dayLocked(day)) return
     const start = new Date(day)
     const h = Math.floor(hourFloat)
     const m = Math.floor((hourFloat - h) * 4) * 15
@@ -39,6 +45,7 @@ export default function CalendarPage() {
   }
 
   const openEdit = (e: TimeEntry) => {
+    if (isLocked(e)) return
     setTarget({
       id: e.id, start: new Date(e.start), end: e.end ? new Date(e.end) : new Date(),
       description: e.description, projectId: e.projectId, taskId: e.taskId, tagIds: e.tagIds, billable: e.billable,
@@ -75,10 +82,18 @@ export default function CalendarPage() {
         <div className="flex border-b border-ck-border-light pr-[10px]">
           <div className="w-14 shrink-0" />
           {days.map((d, i) => (
-            <div key={i} className={cn('flex-1 border-l border-ck-border-light px-2 py-2 text-center', isSameDay(d, today) && 'text-ck-blue')}>
-              <div className="text-[11px] font-medium uppercase tracking-wide">{format(d, 'EEE')}</div>
+            <div key={i} className={cn('min-w-0 flex-1 border-l border-ck-border-light px-1 py-2 text-center', isSameDay(d, today) && 'text-ck-blue')}>
+              <div className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide">{format(d, 'EEE')}{dayLocked(d) && <Lock size={10} className="text-ck-muted" />}</div>
               <div className={cn('mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-base', isSameDay(d, today) && 'bg-ck-blue text-white')}>{format(d, 'd')}</div>
               <div className="mt-0.5 font-mono text-[11px] text-ck-muted">{formatDuration(sumSeconds(entriesByDay[i], now), 'compact')}</div>
+              {timeOffByDay[i].map((r) => {
+                const p = state.timeOffPolicies.find((x) => x.id === r.policyId)
+                return (
+                  <div key={r.id} className="mt-1 truncate rounded-sm px-1 py-0.5 text-[10px] text-white" style={{ background: p?.color ?? '#999' }} title={`${memberById(r.memberId)?.name}: ${p?.name}`}>
+                    {memberById(r.memberId)?.name?.split(' ')[0]} · {p?.name}
+                  </div>
+                )
+              })}
             </div>
           ))}
         </div>
@@ -96,7 +111,7 @@ export default function CalendarPage() {
             {days.map((d, i) => (
               <div
                 key={i}
-                className={cn('relative flex-1 border-l border-ck-border-light', isSameDay(d, today) && 'bg-ck-blue-light/20')}
+                className={cn('relative flex-1 border-l border-ck-border-light', isSameDay(d, today) && 'bg-ck-blue-light/20', dayLocked(d) && 'bg-ck-bg/60')}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest('[data-entry]')) return
                   const rect = e.currentTarget.getBoundingClientRect()
@@ -125,7 +140,7 @@ export default function CalendarPage() {
                       type="button"
                       data-entry
                       onClick={() => openEdit(entry)}
-                      className={cn('absolute overflow-hidden rounded-sm border-l-[3px] px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:z-20 hover:shadow-md', running && 'ck-pulse')}
+                      className={cn('absolute overflow-hidden rounded-sm border-l-[3px] px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:z-20 hover:shadow-md', running && 'ck-pulse', isLocked(entry) && 'cursor-default opacity-70')}
                       style={{
                         top, height, left: `calc(${(col / cols) * 100}% + 2px)`, width: `calc(${100 / cols}% - 4px)`,
                         background: `${color}22`, borderColor: color, color: '#333',

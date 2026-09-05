@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Star } from 'lucide-react'
 import { useStore } from '../store'
 import { Popover, ProjectDot, cn } from './ui'
 import type { Project } from '../types'
@@ -35,14 +35,22 @@ export function ProjectLabel({ projectId, taskId, className, placeholder = 'Proj
 }
 
 export function ProjectPicker({
-  value, onChange, className, align = 'left', placeholder,
+  value, onChange, className, align = 'left', placeholder, disabled,
 }: {
   value: ProjectSelection
   onChange: (v: ProjectSelection) => void
   className?: string
   align?: 'left' | 'right'
   placeholder?: string
+  disabled?: boolean
 }) {
+  if (disabled) {
+    return (
+      <div className={cn('flex max-w-full items-center px-2 py-1 text-left text-sm opacity-70', className)}>
+        <ProjectLabel {...value} placeholder={placeholder} />
+      </div>
+    )
+  }
   return (
     <Popover
       align={align}
@@ -64,24 +72,66 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
   const [q, setQ] = useState('')
   const [expanded, setExpanded] = useState<string | null>(value.projectId)
 
-  const groups = useMemo(() => {
-    const active = state.projects.filter((p) => !p.archived && p.name.toLowerCase().includes(q.toLowerCase()))
+  const { favorites, groups } = useMemo(() => {
+    const active = state.projects.filter((p) => !p.archived && !p.isTemplate && p.name.toLowerCase().includes(q.toLowerCase()))
+    const favorites = active.filter((p) => p.favorite).sort((a, b) => a.name.localeCompare(b.name))
     const map = new Map<string, Project[]>()
     for (const p of active) {
       const key = p.clientId ?? ''
       map.set(key, [...(map.get(key) ?? []), p])
     }
-    return [...map.entries()]
-      .map(([clientId, projects]) => ({ clientId, name: clientId ? clientById(clientId)?.name ?? 'Client' : 'No client', projects }))
+    const groups = [...map.entries()]
+      .map(([clientId, projects]) => ({ clientId, name: clientId ? clientById(clientId)?.name ?? 'Client' : 'No client', projects: projects.sort((a, b) => a.name.localeCompare(b.name)) }))
       .sort((a, b) => (a.clientId === '' ? 1 : b.clientId === '' ? -1 : a.name.localeCompare(b.name)))
+    return { favorites, groups }
   }, [state.projects, q, clientById])
 
   const createProject = () => {
     const name = q.trim()
     if (!name) return
-    const p = addProject({ name, clientId: null, color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)], billable: state.settings.billableByDefault, hourlyRate: null, estimateHours: null })
+    const p = addProject({
+      name, clientId: null, color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)], billable: state.settings.billableByDefault,
+      hourlyRate: null, estimateHours: null, budget: null, isTemplate: false, favorite: false, note: '',
+    })
     onChange({ projectId: p.id, taskId: null })
   }
+
+  const renderProject = (p: Project) => (
+    <div key={p.id}>
+      <div className={cn('flex items-center hover:bg-ck-bg', value.projectId === p.id && !value.taskId && 'bg-ck-blue-light')}>
+        <button
+          type="button"
+          onClick={() => onChange({ projectId: p.id, taskId: null })}
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-sm"
+        >
+          <ProjectDot color={p.color} />
+          <span className="truncate" style={{ color: p.color }}>{p.name}</span>
+          {p.favorite && <Star size={11} className="shrink-0 fill-amber-400 text-amber-400" />}
+        </button>
+        {p.tasks.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(expanded === p.id ? null : p.id)}
+            className="px-2 text-xs text-ck-muted hover:text-ck-text"
+            title="Tasks"
+          >
+            <span className="inline-flex items-center gap-0.5">{p.tasks.length} {expanded === p.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+          </button>
+        )}
+      </div>
+      {expanded === p.id &&
+        p.tasks.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onChange({ projectId: p.id, taskId: t.id })}
+            className={cn('flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left text-sm hover:bg-ck-bg', value.taskId === t.id && 'bg-ck-blue-light')}
+          >
+            <span className={cn(t.done && 'text-ck-muted line-through')}>{t.name}</span>
+          </button>
+        ))}
+    </div>
+  )
 
   return (
     <div className="flex max-h-[380px] flex-col">
@@ -103,44 +153,16 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
         >
           <ProjectDot color="#999" /> No project
         </button>
+        {favorites.length > 0 && (
+          <div>
+            <div className="px-3 pb-0.5 pt-2 text-[11px] font-medium uppercase tracking-wider text-ck-muted">Favorites</div>
+            {favorites.map(renderProject)}
+          </div>
+        )}
         {groups.map((g) => (
           <div key={g.clientId}>
             <div className="px-3 pb-0.5 pt-2 text-[11px] font-medium uppercase tracking-wider text-ck-muted">{g.name}</div>
-            {g.projects.map((p) => (
-              <div key={p.id}>
-                <div className={cn('flex items-center hover:bg-ck-bg', value.projectId === p.id && !value.taskId && 'bg-ck-blue-light')}>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ projectId: p.id, taskId: null })}
-                    className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-sm"
-                  >
-                    <ProjectDot color={p.color} />
-                    <span className="truncate" style={{ color: p.color }}>{p.name}</span>
-                  </button>
-                  {p.tasks.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setExpanded(expanded === p.id ? null : p.id)}
-                      className="px-2 text-xs text-ck-muted hover:text-ck-text"
-                      title="Tasks"
-                    >
-                      <span className="inline-flex items-center gap-0.5">{p.tasks.length} {expanded === p.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
-                    </button>
-                  )}
-                </div>
-                {expanded === p.id &&
-                  p.tasks.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => onChange({ projectId: p.id, taskId: t.id })}
-                      className={cn('flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left text-sm hover:bg-ck-bg', value.taskId === t.id && 'bg-ck-blue-light')}
-                    >
-                      <span className={cn(t.done && 'text-ck-muted line-through')}>{t.name}</span>
-                    </button>
-                  ))}
-              </div>
-            ))}
+            {g.projects.map(renderProject)}
           </div>
         ))}
         {groups.length === 0 && (

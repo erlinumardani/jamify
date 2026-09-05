@@ -148,3 +148,25 @@ export function formatMoney(amount: number, currency: string): string {
     return `${currency} ${amount.toFixed(2)}`
   }
 }
+
+/** Rounds seconds to the workspace rounding interval (0 = no rounding). */
+export function roundSeconds(sec: number, minutes: number, mode: 'nearest' | 'up' | 'down'): number {
+  if (!minutes || minutes <= 0) return sec
+  const unit = minutes * 60
+  const q = sec / unit
+  const r = mode === 'up' ? Math.ceil(q) : mode === 'down' ? Math.floor(q) : Math.round(q)
+  return r * unit
+}
+
+/** Inclusive day count between two yyyy-MM-dd keys, skipping weekends when asked. */
+export function countDays(fromKey: string, toKey: string, skipWeekends = true): number {
+  let d = fromDateKey(fromKey)
+  const end = fromDateKey(toKey)
+  let n = 0
+  while (d <= end) {
+    const dow = d.getDay()
+    if (!skipWeekends || (dow !== 0 && dow !== 6)) n++
+    d = addDays(d, 1)
+  }
+  return n
+}

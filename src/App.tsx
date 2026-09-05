@@ -13,6 +13,11 @@ import Clients from './pages/Clients'
 import Tags from './pages/Tags'
 import Team from './pages/Team'
 import SettingsPage from './pages/Settings'
+import Expenses from './pages/Expenses'
+import Invoices from './pages/Invoices'
+import TimeOff from './pages/TimeOff'
+import Approvals from './pages/Approvals'
+import Schedule from './pages/Schedule'
 
 export default function App() {
   return (
@@ -26,8 +31,14 @@ export default function App() {
                 <Route path="/tracker" element={<TimeTracker />} />
                 <Route path="/timesheet" element={<Timesheet />} />
                 <Route path="/calendar" element={<CalendarPage />} />
+                <Route path="/approvals" element={<Approvals />} />
+                <Route path="/time-off" element={<TimeOff />} />
+                <Route path="/schedule" element={<Schedule />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/expenses" element={<Expenses />} />
+                <Route path="/invoices" element={<Invoices />} />
+                <Route path="/invoices/:id" element={<Invoices />} />
                 <Route path="/projects" element={<Projects />} />
                 <Route path="/projects/:id" element={<ProjectDetail />} />
                 <Route path="/clients" element={<Clients />} />
