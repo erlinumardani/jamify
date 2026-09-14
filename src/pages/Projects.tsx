@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Plus, Search, Star } from 'lucide-react'
+import { AlertTriangle, Lock, Plus, Search, Star } from 'lucide-react'
 import { useStore } from '../store'
 import { Button, EmptyState, Modal, PageHeader, ProjectDot, Toggle, cn } from '../components/ui'
 import { entrySeconds, formatDuration, formatMoney } from '../lib/time'
 import { PROJECT_COLORS } from '../types'
 
 export default function Projects() {
-  const { state, dispatch, clientById, addProject, rateFor } = useStore()
+  const { state, dispatch, clientById, addProject, rateFor, can } = useStore()
   const { settings } = state
   const [filter, setFilter] = useState<'active' | 'archived' | 'templates' | 'all'>('active')
   const [q, setQ] = useState('')
@@ -59,7 +59,7 @@ export default function Projects() {
   return (
     <div>
       <PageHeader title="Projects">
-        <Button onClick={() => setOpen(true)}><Plus size={16} /> Create new project</Button>
+        {can.manage && <Button onClick={() => setOpen(true)}><Plus size={16} /> Create new project</Button>}
       </PageHeader>
 
       <div className="ck-card mb-4 flex flex-wrap items-center gap-2 p-3">
@@ -81,7 +81,7 @@ export default function Projects() {
 
       <div className="ck-card overflow-x-auto">
         {list.length === 0 ? (
-          <EmptyState title="No projects found" hint="Projects let you group time entries, set budgets and track progress." action={<Button onClick={() => setOpen(true)}>Create new project</Button>} />
+          <EmptyState title="No projects found" hint="Projects let you group time entries, set budgets and track progress." action={can.manage ? <Button onClick={() => setOpen(true)}>Create new project</Button> : undefined} />
         ) : (
           <table className="ck-table w-full min-w-[820px]">
             <thead>
@@ -102,6 +102,7 @@ export default function Projects() {
                     <td>
                       <Link to={`/projects/${p.id}`} className="inline-flex items-center gap-2 font-medium hover:underline" style={{ color: p.color }}>
                         <ProjectDot color={p.color} size={10} /> {p.name}
+                        {!p.isPublic && <Lock size={12} className="text-ck-muted" aria-label="Private project" />}
                         {p.archived && <span className="rounded-sm bg-black/5 px-1.5 py-0.5 text-[10px] font-medium uppercase text-ck-muted">archived</span>}
                         {p.isTemplate && <span className="rounded-sm bg-ck-blue-light px-1.5 py-0.5 text-[10px] font-medium uppercase text-ck-blue-dark">template</span>}
                       </Link>

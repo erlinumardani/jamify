@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, BarChart3, Briefcase, Calendar, CalendarRange, ChevronDown, ClipboardCheck, Clock, FileText, FolderKanban,
-  HelpCircle, LayoutDashboard, LogOut, Menu, Palmtree, Receipt, Settings, Square, Table2, Tag, Users, X,
+  AlertTriangle, BarChart3, Briefcase, Calendar, CalendarRange, Check, ChevronDown, ClipboardCheck, Clock, FileText, FolderKanban,
+  HelpCircle, LayoutDashboard, LogOut, Menu, Palmtree, Plus, Receipt, Settings, Square, Table2, Tag, Users, X,
 } from 'lucide-react'
 import { useStore } from '../store'
 import { useAuth } from '../auth'
@@ -97,10 +97,7 @@ export default function Layout() {
           <button type="button" className="text-[#555] lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
             <Menu size={22} />
           </button>
-          <NavLink to="/settings" className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-sm font-medium hover:bg-black/5">
-            <span className="max-w-[200px] truncate">{state.settings.workspaceName}</span>
-            <ChevronDown size={16} className="text-ck-muted" />
-          </NavLink>
+          <WorkspaceSwitcher />
           <span className="hidden rounded-sm bg-ck-blue-light px-2 py-0.5 text-[11px] font-medium uppercase text-ck-blue-dark sm:inline">Pro</span>
 
           <div className="ml-auto flex items-center gap-3">
@@ -158,5 +155,56 @@ export default function Layout() {
         </main>
       </div>
     </div>
+  )
+}
+
+function WorkspaceSwitcher() {
+  const { workspace, workspaces, switchWorkspace, createWorkspace, can } = useStore()
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const itemCls = 'flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-ck-bg'
+
+  const create = async () => {
+    const name = prompt('Name of the new workspace')?.trim()
+    if (!name) return
+    try {
+      await createWorkspace(name)
+    } catch (e) {
+      alert(`Could not create the workspace: ${(e as Error).message}`)
+    }
+  }
+
+  return (
+    <Popover
+      width={260}
+      trigger={() => (
+        <button type="button" className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-sm font-medium hover:bg-black/5">
+          <span className="max-w-[200px] truncate">{workspace.name}</span>
+          <ChevronDown size={16} className="text-ck-muted" />
+        </button>
+      )}
+    >
+      {(close) => (
+        <div className="py-1 text-sm">
+          <div className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-ck-muted">Workspaces</div>
+          {workspaces.map((w) => (
+            <button key={w.id} type="button" className={itemCls} onClick={() => { close(); if (w.id !== workspace.id) switchWorkspace(w.id) }}>
+              <span className="min-w-0 flex-1 truncate">{w.name}</span>
+              {w.ownerId !== user.id && <span className="text-[10px] font-medium uppercase text-ck-muted">joined</span>}
+              {w.id === workspace.id && <Check size={15} className="shrink-0 text-ck-blue" />}
+            </button>
+          ))}
+          <div className="my-1 border-t border-ck-border-light" />
+          {can.admin && (
+            <button type="button" className={itemCls} onClick={() => { close(); navigate('/settings') }}>
+              <Settings size={15} className="text-ck-muted" /> Workspace settings
+            </button>
+          )}
+          <button type="button" className={itemCls} onClick={() => { close(); void create() }}>
+            <Plus size={15} className="text-ck-muted" /> Create workspace
+          </button>
+        </div>
+      )}
+    </Popover>
   )
 }

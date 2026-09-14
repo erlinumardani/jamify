@@ -12,7 +12,7 @@ interface Row { projectId: string | null; taskId: string | null }
 const rowKey = (r: Row) => `${r.projectId ?? ''}|${r.taskId ?? ''}`
 
 export default function Timesheet() {
-  const { state, dispatch, addEntry, projectById, taskById } = useStore()
+  const { state, myEntries, dispatch, addEntry, projectById, taskById } = useStore()
   const { settings } = state
   const [anchor, setAnchor] = useState(() => new Date())
   const [extraRows, setExtraRows] = useState<Row[]>([])
@@ -26,8 +26,8 @@ export default function Timesheet() {
   const weekEntries = useMemo(() => {
     const from = days[0].getTime()
     const to = days[6].getTime() + 86400000
-    return state.entries.filter((e) => e.end !== null && new Date(e.start).getTime() >= from && new Date(e.start).getTime() < to)
-  }, [state.entries, days])
+    return myEntries.filter((e) => e.end !== null && new Date(e.start).getTime() >= from && new Date(e.start).getTime() < to)
+  }, [myEntries, days])
 
   const rows = useMemo(() => {
     const map = new Map<string, Row>()
@@ -65,7 +65,7 @@ export default function Timesheet() {
   const copyLastWeek = () => {
     const prevDays = weekDays(addWeeks(anchor, -1), settings.weekStart)
     const from = prevDays[0].getTime(), to = prevDays[6].getTime() + 86400000
-    const prev = state.entries.filter((e) => e.end !== null && new Date(e.start).getTime() >= from && new Date(e.start).getTime() < to)
+    const prev = myEntries.filter((e) => e.end !== null && new Date(e.start).getTime() >= from && new Date(e.start).getTime() < to)
     if (!prev.length) return alert('Last week has no time entries.')
     if (weekEntries.length && !confirm('This week already has entries. Copy last week on top of them?')) return
     for (const e of prev) {

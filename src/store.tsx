@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  AppState, Client, CollectionName, EntryDraft, Expense, Member, Project, Settings, Tag, Task, TimeEntry,
+  AppState, Client, CollectionName, EntryDraft, Expense, Member, Project, Settings, Tag, Task, TimeEntry, WorkspaceInfo,
 } from './types'
-import { emptyState, loadState, persist } from './lib/db'
-import type { AuthUser } from './auth'
+import { NotAMemberError, createWorkspace as createWorkspaceRow, listWorkspaces, loadWorkspace, persist, type WorkspaceCtx } from './lib/db'
+import { WORKSPACE_KEY, readLocal, writeLocal } from './lib/local'
+import { useAuth, type AuthUser } from './auth'
 
 const uid = () => crypto.randomUUID()
 
@@ -17,10 +18,12 @@ export type Action =
   | { type: 'entry/delete'; id: string }
   | { type: 'entry/deleteMany'; ids: string[] }
   | { type: 'timer/start'; entry: TimeEntry }
-  | { type: 'timer/stop'; at: string }
+  | { type: 'timer/stop'; at: string; memberId: string }
   | { type: 'project/add'; project: Project }
   | { type: 'project/update'; id: string; patch: Partial<Project> }
   | { type: 'project/delete'; id: string }
+  | { type: 'project/addMember'; projectId: string; memberId: string }
+  | { type: 'project/removeMember'; projectId: string; memberId: string }
   | { type: 'task/add'; projectId: string; task: Task }
   | { type: 'task/update'; projectId: string; taskId: string; patch: Partial<Task> }
   | { type: 'task/delete'; projectId: string; taskId: string }
@@ -58,12 +61,13 @@ export function reducer(state: AppState, a: Action): AppState {
       const set = new Set(a.ids)
       return { ...state, entries: state.entries.filter((e) => !set.has(e.id)) }
     }
+    // timers belong to a member: starting or stopping one never touches a teammate's
     case 'timer/start': {
-      const entries = state.entries.map((e) => (e.end === null ? { ...e, end: a.entry.start } : e))
+      const entries = state.entries.map((e) => (e.end === null && e.userId === a.entry.userId ? { ...e, end: a.entry.start } : e))
       return { ...state, entries: [a.entry, ...entries] }
     }
     case 'timer/stop':
-      return { ...state, entries: state.entries.map((e) => (e.end === null ? { ...e, end: a.at } : e)) }
+      return { ...state, entries: state.entries.map((e) => (e.end === null && e.userId === a.memberId ? { ...e, end: a.at } : e)) }
     case 'project/add':
       return { ...state, projects: [...state.projects, a.project] }
     case 'project/update':
@@ -76,6 +80,13 @@ export function reducer(state: AppState, a: Action): AppState {
         expenses: state.expenses.map((x) => (x.projectId === a.id ? { ...x, projectId: null } : x)),
         schedules: state.schedules.map((x) => (x.projectId === a.id ? { ...x, projectId: null } : x)),
       }
+    case 'project/addMember':
+      return {
+        ...state,
+        projects: state.projects.map((p) => (p.id === a.projectId && !p.memberIds.includes(a.memberId) ? { ...p, memberIds: [...p.memberIds, a.memberId] } : p)),
+      }
+    case 'project/removeMember':
+      return { ...state, projects: state.projects.map((p) => (p.id === a.projectId ? { ...p, memberIds: p.memberIds.filter((id) => id !== a.memberId) } : p)) }
     case 'task/add':
       return { ...state, projects: state.projects.map((p) => (p.id === a.projectId ? { ...p, tasks: [...p.tasks, a.task] } : p)) }
     case 'task/update':
@@ -120,6 +131,7 @@ export function reducer(state: AppState, a: Action): AppState {
       return {
         ...state,
         members: state.members.filter((m) => m.id !== a.id),
+        projects: state.projects.map((p) => (p.memberIds.includes(a.id) ? { ...p, memberIds: p.memberIds.filter((id) => id !== a.id) } : p)),
         timeOffRequests: state.timeOffRequests.filter((r) => r.memberId !== a.id),
         approvals: state.approvals.filter((r) => r.memberId !== a.id),
         schedules: state.schedules.filter((r) => r.memberId !== a.id),
@@ -153,9 +165,19 @@ export function reducer(state: AppState, a: Action): AppState {
 export interface StoreApi {
   state: AppState
   dispatch: (a: Action) => void
+  /** resolves once every queued write has been sent to Supabase */
+  flush: () => Promise<void>
   now: number
   running: TimeEntry | null
   currentUser: Member
+  /** the signed-in member's own time entries (managers also load their teammates') */
+  myEntries: TimeEntry[]
+  /** manage: Owner/Admin/Manager (projects, clients, approvals); admin: Owner/Admin (members, workspace settings) */
+  can: { manage: boolean; admin: boolean }
+  workspace: WorkspaceInfo
+  workspaces: WorkspaceInfo[]
+  switchWorkspace: (id: string) => void
+  createWorkspace: (name: string) => Promise<void>
   syncError: string | null
   clearSyncError: () => void
   projectById: (id: string | null) => Project | undefined
@@ -177,7 +199,7 @@ export interface StoreApi {
   addEntry: (draft: EntryDraft & { start: Date; end: Date }) => TimeEntry
   updateEntry: (id: string, patch: Partial<TimeEntry>) => void
   deleteEntry: (id: string) => void
-  addProject: (p: Omit<Project, 'id' | 'tasks' | 'archived'> & { tasks?: Task[] }) => Project
+  addProject: (p: Omit<Project, 'id' | 'tasks' | 'archived' | 'isPublic' | 'memberIds'> & { tasks?: Task[] }) => Project
   addClient: (name: string) => Client
   addTag: (name: string) => Tag
   wipeData: () => void
@@ -186,35 +208,82 @@ export interface StoreApi {
 
 const StoreContext = createContext<StoreApi | null>(null)
 
+/** Saved workspace first, then the user's own, then the ones they joined. */
+function orderWorkspaces(list: WorkspaceInfo[], userId: string): WorkspaceInfo[] {
+  const saved = readLocal(WORKSPACE_KEY)
+  const rank = (w: WorkspaceInfo) => (w.id === saved ? 0 : w.ownerId === userId ? 1 : 2)
+  return [...list].sort((a, b) => rank(a) - rank(b))
+}
+
 export function StoreProvider({ user, children }: { user: AuthUser; children: ReactNode }) {
+  const { signOut } = useAuth()
   const [state, setState] = useState<AppState | null>(null)
+  const [workspaces, setWorkspaces] = useState<{ active: WorkspaceInfo; list: WorkspaceInfo[] } | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  // workspace + member every queued write is sent to; set when a workspace finishes loading
+  const ctx = useRef<WorkspaceCtx | null>(null)
+  // StrictMode runs the load effect twice in development: both runs share one workspace creation
+  const creating = useRef<Promise<string> | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setState(null)
     setLoadError(null)
-    loadState(user.id, { name: user.name, email: user.email })
-      .then((s) => { if (!cancelled) setState(s) })
-      .catch((e: Error) => { if (!cancelled) setLoadError(e.message) })
+    ;(async () => {
+      let list = await listWorkspaces()
+      if (!list.length) {
+        creating.current ??= createWorkspaceRow()
+        await creating.current
+        list = await listWorkspaces()
+      }
+      for (const w of orderWorkspaces(list, user.id)) {
+        try {
+          const s = await loadWorkspace(w.id, user)
+          if (cancelled) return
+          writeLocal(WORKSPACE_KEY, w.id)
+          ctx.current = { workspaceId: w.id, memberId: s.currentUserId }
+          setWorkspaces({ active: w, list })
+          setState(s)
+          return
+        } catch (e) {
+          if (!(e instanceof NotAMemberError)) throw e
+        }
+      }
+      throw new Error('No workspace is available for your account.')
+    })().catch((e: Error) => { if (!cancelled) setLoadError(e.message) })
     return () => { cancelled = true }
-  }, [user.id, user.name, user.email, reloadKey])
+  }, [user, reloadKey])
 
   // writes are applied optimistically, then pushed to Supabase in order
   const queue = useRef<Promise<void>>(Promise.resolve())
   const dispatch = useCallback((a: Action) => {
     setState((s) => (s ? reducer(s, a) : s))
+    const target = ctx.current
+    if (!target) return
     queue.current = queue.current
-      .then(() => persist(user.id, a))
+      .then(() => persist(target, a))
       .catch((e: Error) => {
         console.error('sync failed', a.type, e)
         setSyncError(`Could not save "${a.type}": ${e.message}`)
       })
-  }, [user.id])
+  }, [])
+  const flush = useCallback(() => queue.current, [])
 
-  const running = useMemo(() => state?.entries.find((e) => e.end === null) ?? null, [state?.entries])
+  const switchWorkspace = useCallback((id: string) => {
+    writeLocal(WORKSPACE_KEY, id)
+    setReloadKey((k) => k + 1)
+  }, [])
+
+  const running = useMemo(
+    () => state?.entries.find((e) => e.end === null && e.userId === state.currentUserId) ?? null,
+    [state],
+  )
+  const myEntries = useMemo(
+    () => (state ? state.entries.filter((e) => e.userId === state.currentUserId) : []),
+    [state],
+  )
 
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -229,15 +298,21 @@ export function StoreProvider({ user, children }: { user: AuthUser; children: Re
   }, [running, now])
 
   const api = useMemo<StoreApi | null>(() => {
-    if (!state) return null
+    if (!state || !workspaces) return null
     const projectById = (id: string | null) => (id ? state.projects.find((p) => p.id === id) : undefined)
     const clientById = (id: string | null) => (id ? state.clients.find((c) => c.id === id) : undefined)
     const tagById = (id: string) => state.tags.find((t) => t.id === id)
     const taskById = (projectId: string | null, taskId: string | null) =>
       taskId ? projectById(projectId)?.tasks.find((t) => t.id === taskId) : undefined
     const memberById = (id: string | null) => (id ? state.members.find((m) => m.id === id) : undefined)
-    const currentUser = memberById(state.currentUserId) ?? state.members[0] ?? {
-      id: '', name: user.name, email: user.email, role: 'Owner' as const, status: 'Active' as const, hourlyRate: null, costRate: null, workingHours: 8,
+    const currentUser = memberById(state.currentUserId) ?? {
+      id: state.currentUserId, name: user.name, email: user.email, role: 'Member' as const, status: 'Active' as const,
+      hourlyRate: null, costRate: null, workingHours: 8, authUserId: user.id,
+    }
+    const isOwner = workspaces.active.ownerId === user.id
+    const can = {
+      manage: isOwner || ['Owner', 'Admin', 'Manager'].includes(currentUser.role),
+      admin: isOwner || currentUser.role === 'Owner' || currentUser.role === 'Admin',
     }
     const missingFields = (d: EntryDraft) => {
       const s = state.settings
@@ -250,7 +325,11 @@ export function StoreProvider({ user, children }: { user: AuthUser; children: Re
     const start = (draft: EntryDraft) =>
       dispatch({ type: 'timer/start', entry: { id: uid(), ...draft, start: new Date().toISOString(), end: null, userId: state.currentUserId, invoiceId: null } })
     return {
-      state, dispatch, now, running, currentUser, syncError,
+      state, dispatch, flush, now, running, currentUser, myEntries, can, syncError,
+      workspace: { ...workspaces.active, name: state.settings.workspaceName },
+      workspaces: workspaces.list.map((w) => (w.id === workspaces.active.id ? { ...w, name: state.settings.workspaceName } : w)),
+      switchWorkspace,
+      createWorkspace: async (name) => switchWorkspace(await createWorkspaceRow(name)),
       clearSyncError: () => setSyncError(null),
       projectById, clientById, tagById, taskById, memberById,
       rateFor: (e) => {
@@ -267,7 +346,7 @@ export function StoreProvider({ user, children }: { user: AuthUser; children: Re
       isLocked: (e) => !!state.settings.lockBefore && e.start.slice(0, 10) < state.settings.lockBefore,
       missingFields,
       startTimer: start,
-      stopTimer: () => dispatch({ type: 'timer/stop', at: new Date().toISOString() }),
+      stopTimer: () => dispatch({ type: 'timer/stop', at: new Date().toISOString(), memberId: state.currentUserId }),
       continueEntry: (e) => start({ description: e.description, projectId: e.projectId, taskId: e.taskId, tagIds: e.tagIds, billable: e.billable }),
       addEntry: ({ start: s, end, ...draft }) => {
         const entry: TimeEntry = { id: uid(), ...draft, start: s.toISOString(), end: end.toISOString(), userId: state.currentUserId, invoiceId: null }
@@ -277,7 +356,7 @@ export function StoreProvider({ user, children }: { user: AuthUser; children: Re
       updateEntry: (id, patch) => dispatch({ type: 'entry/update', id, patch }),
       deleteEntry: (id) => dispatch({ type: 'entry/delete', id }),
       addProject: ({ tasks, ...p }) => {
-        const project: Project = { ...p, id: uid(), archived: false, tasks: (tasks ?? []).map((t) => ({ ...t, id: uid() })) }
+        const project: Project = { ...p, id: uid(), archived: false, isPublic: true, memberIds: [], tasks: (tasks ?? []).map((t) => ({ ...t, id: uid() })) }
         dispatch({ type: 'project/add', project })
         return project
       },
@@ -291,21 +370,27 @@ export function StoreProvider({ user, children }: { user: AuthUser; children: Re
         dispatch({ type: 'tag/add', tag })
         return tag
       },
-      wipeData: () => {
-        const fresh = emptyState({ name: user.name, email: user.email }, currentUser.id ? currentUser : undefined)
-        fresh.settings = { ...fresh.settings, workspaceName: state.settings.workspaceName }
-        dispatch({ type: 'state/replace', state: fresh })
-      },
+      // members and settings stay: wiping data never removes anyone from the workspace
+      wipeData: () => dispatch({
+        type: 'state/replace',
+        state: {
+          ...state, clients: [], projects: [], tags: [], entries: [], expenses: [], invoices: [],
+          timeOffPolicies: [], timeOffRequests: [], approvals: [], schedules: [],
+        },
+      }),
       importData: (s) => dispatch({ type: 'state/replace', state: s }),
     }
-  }, [state, now, running, syncError, dispatch, user.name, user.email])
+  }, [state, workspaces, now, running, myEntries, syncError, dispatch, flush, switchWorkspace, user])
 
   if (loadError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="text-base text-[#666]">Could not load your workspace</div>
         <div className="max-w-md text-sm text-ck-red">{loadError}</div>
-        <button type="button" className="rounded-sm bg-ck-blue px-4 py-2 text-sm font-medium uppercase text-white" onClick={() => setReloadKey((k) => k + 1)}>Retry</button>
+        <div className="flex gap-2">
+          <button type="button" className="rounded-sm bg-ck-blue px-4 py-2 text-sm font-medium uppercase text-white" onClick={() => setReloadKey((k) => k + 1)}>Retry</button>
+          <button type="button" className="rounded-sm px-4 py-2 text-sm font-medium uppercase text-[#555] hover:bg-black/5" onClick={() => signOut()}>Log out</button>
+        </div>
       </div>
     )
   }

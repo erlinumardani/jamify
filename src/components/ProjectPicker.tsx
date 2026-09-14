@@ -68,7 +68,7 @@ export function ProjectPicker({
 }
 
 export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onChange: (v: ProjectSelection) => void }) {
-  const { state, clientById, addProject } = useStore()
+  const { state, clientById, addProject, can } = useStore()
   const [q, setQ] = useState('')
   const [expanded, setExpanded] = useState<string | null>(value.projectId)
 
@@ -88,7 +88,7 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
 
   const createProject = () => {
     const name = q.trim()
-    if (!name) return
+    if (!name || !can.manage) return
     const p = addProject({
       name, clientId: null, color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)], billable: state.settings.billableByDefault,
       hourlyRate: null, estimateHours: null, budget: null, isTemplate: false, favorite: false, note: '',
@@ -169,16 +169,18 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
           <div className="px-3 py-3 text-center text-sm text-ck-muted">No projects found</div>
         )}
       </div>
-      <div className="border-t border-ck-border-light p-2">
-        <button
-          type="button"
-          disabled={!q.trim()}
-          onClick={createProject}
-          className="flex w-full items-center justify-center gap-1 rounded-sm border border-ck-blue py-1.5 text-xs font-medium uppercase tracking-wide text-ck-blue hover:bg-ck-blue-light disabled:opacity-40"
-        >
-          <Plus size={14} /> Create {q.trim() ? `"${q.trim()}"` : 'new project'}
-        </button>
-      </div>
+      {can.manage && (
+        <div className="border-t border-ck-border-light p-2">
+          <button
+            type="button"
+            disabled={!q.trim()}
+            onClick={createProject}
+            className="flex w-full items-center justify-center gap-1 rounded-sm border border-ck-blue py-1.5 text-xs font-medium uppercase tracking-wide text-ck-blue hover:bg-ck-blue-light disabled:opacity-40"
+          >
+            <Plus size={14} /> Create {q.trim() ? `"${q.trim()}"` : 'new project'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

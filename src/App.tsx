@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { StoreProvider } from './store'
 import { AuthProvider } from './auth'
 import Layout from './components/Layout'
+import InvitePage from './pages/Invite'
 import TimeTracker from './pages/TimeTracker'
 import Timesheet from './pages/Timesheet'
 import CalendarPage from './pages/Calendar'
@@ -19,7 +20,11 @@ import TimeOff from './pages/TimeOff'
 import Approvals from './pages/Approvals'
 import Schedule from './pages/Schedule'
 
+// invitation links open without a session, so they render outside AuthProvider
+const inviteMatch = /^\/invite\/([^/]+)\/?$/.exec(window.location.pathname)
+
 export default function App() {
+  if (inviteMatch) return <InvitePage token={decodeURIComponent(inviteMatch[1])} />
   return (
     <AuthProvider>
       {(user) => (

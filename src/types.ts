@@ -25,6 +25,9 @@ export interface Project {
   favorite: boolean
   note: string
   tasks: Task[]
+  /** public projects are visible to everyone in the workspace; private ones to managers and memberIds */
+  isPublic: boolean
+  memberIds: string[]
 }
 
 export interface Tag {
@@ -55,7 +58,10 @@ export interface Member {
   name: string
   email: string
   role: Role
+  /** Pending until the invitation is accepted */
   status: 'Active' | 'Pending'
+  /** auth user linked to this member once they joined, null for pending invitations */
+  authUserId: string | null
   hourlyRate: number | null
   /** internal labor cost per hour */
   costRate: number | null
@@ -181,6 +187,13 @@ export interface AppState {
   timeOffRequests: TimeOffRequest[]
   approvals: Approval[]
   schedules: Schedule[]
+}
+
+export interface WorkspaceInfo {
+  id: string
+  name: string
+  /** auth user id of the workspace owner */
+  ownerId: string
 }
 
 /** Collections handled by the generic add/update/delete actions. */

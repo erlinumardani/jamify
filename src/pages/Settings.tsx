@@ -1,18 +1,26 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Download, FileSpreadsheet, Trash2, Upload } from 'lucide-react'
 import { useStore, uid } from '../store'
 import { Button, PageHeader, Toggle } from '../components/ui'
+import { SmtpSettings } from '../components/SmtpSettings'
 import { DEFAULT_SETTINGS, PROJECT_COLORS, type AppState, type DurationFormat, type Member, type Project, type RoundingMode, type Task, type TimeEntry, type TimeFormat } from '../types'
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'IDR', 'JPY', 'AUD', 'CAD', 'SGD', 'INR']
 
 export default function SettingsPage() {
-  const { state, dispatch, wipeData, importData, addProject, addTag } = useStore()
+  const { state, dispatch, wipeData, importData, addProject, addTag, can } = useStore()
   const s = state.settings
   const jsonRef = useRef<HTMLInputElement>(null)
   const csvRef = useRef<HTMLInputElement>(null)
   const [saved, setSaved] = useState(false)
   const [csvResult, setCsvResult] = useState<string | null>(null)
+  const { hash } = useLocation()
+
+  // links such as /settings#email (from the invite dialog) jump to their section
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [hash])
 
   const set = (patch: Partial<typeof s>) => {
     dispatch({ type: 'settings/update', patch })
@@ -34,14 +42,20 @@ export default function SettingsPage() {
       const full: AppState = {
         version: 2,
         clients: parsed.clients ?? [], tags: parsed.tags ?? [], members: parsed.members?.length ? parsed.members : state.members,
-        projects: ((parsed.projects ?? []) as Partial<Project>[]).map((p) => ({ budget: null, isTemplate: false, favorite: false, note: '', ...p, tasks: ((p.tasks ?? []) as Partial<Task>[]).map((t) => ({ hourlyRate: null, ...t })) })) as Project[],
+        projects: ((parsed.projects ?? []) as Partial<Project>[]).map((p) => ({ budget: null, isTemplate: false, favorite: false, note: '', isPublic: true, memberIds: [], ...p, tasks: ((p.tasks ?? []) as Partial<Task>[]).map((t) => ({ hourlyRate: null, ...t })) })) as Project[],
         entries: ((parsed.entries ?? []) as Partial<TimeEntry>[]).map((e) => ({ invoiceId: null, ...e })) as TimeEntry[],
         settings: { ...DEFAULT_SETTINGS, workspaceName: s.workspaceName, ...(parsed.settings ?? {}) },
-        currentUserId: parsed.currentUserId ?? state.currentUserId,
+        // the signed-in member stays who they are, whatever the file says
+        currentUserId: state.currentUserId,
         expenses: parsed.expenses ?? [], invoices: parsed.invoices ?? [], timeOffPolicies: parsed.timeOffPolicies ?? [],
         timeOffRequests: parsed.timeOffRequests ?? [], approvals: parsed.approvals ?? [], schedules: parsed.schedules ?? [],
       }
-      full.members = (full.members as Partial<Member>[]).map((m) => ({ costRate: null, workingHours: 8, ...m })) as Member[]
+      // account links come from this workspace, never from the file
+      full.members = (full.members as Partial<Member>[]).map((m) => ({
+        costRate: null, workingHours: 8, ...m, authUserId: state.members.find((x) => x.id === m.id)?.authUserId ?? null,
+      })) as Member[]
+      const me = state.members.find((m) => m.id === state.currentUserId)
+      if (me && !full.members.some((m) => m.id === me.id)) full.members = [me, ...full.members]
       if (confirm('Replace the current workspace with the imported data?')) importData(full)
     } catch {
       alert('Could not import: the file is not a valid workspace export.')
@@ -131,7 +145,10 @@ export default function SettingsPage() {
     <div className="max-w-3xl">
       <PageHeader title="Workspace settings">{saved && <span className="text-sm text-ck-green">Saved</span>}</PageHeader>
 
-      <div className="space-y-4">
+      {!can.admin && (
+        <div className="mb-4 rounded-sm bg-ck-blue-light px-4 py-3 text-sm text-ck-blue-dark">Only the workspace owner and admins can change these settings.</div>
+      )}
+      <fieldset disabled={!can.admin} className="min-w-0 space-y-4">
         <Section title="General">
           <div>
             <label className="ck-label">Workspace name</label>
@@ -232,26 +249,36 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Data" hint="Everything is stored in Supabase under your account. Export a backup, import a backup or a CSV timesheet, or start over.">
+        {can.admin && (
+          <Section
+            id="email"
+            title="Email (SMTP)"
+            hint="Invitation emails are sent through this server. The password is encrypted in Supabase Vault and never sent back to the browser. Supabase blocks outgoing ports 25 and 587, so use 465 (SSL/TLS) or 2525 (STARTTLS)."
+          >
+            <SmtpSettings />
+          </Section>
+        )}
+
+        <Section title="Data" hint="Everything is stored in Supabase in this workspace. Export a backup, import a backup or a CSV timesheet, or start over.">
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={exportJson}><Download size={15} /> Export JSON</Button>
             <Button variant="outline" onClick={() => jsonRef.current?.click()}><Upload size={15} /> Import JSON</Button>
             <Button variant="outline" onClick={() => csvRef.current?.click()}><FileSpreadsheet size={15} /> Import CSV timesheet</Button>
             <input ref={jsonRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportJson(f); e.target.value = '' }} />
             <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportCsv(f); e.target.value = '' }} />
-            <Button variant="danger" onClick={() => confirm('Delete ALL data in this workspace (entries, projects, clients, tags, expenses, invoices, time off, approvals, schedules)? Your account and workspace settings are kept. This cannot be undone.') && wipeData()}><Trash2 size={15} /> Delete all data</Button>
+            <Button variant="danger" onClick={() => confirm('Delete ALL data in this workspace (entries, projects, clients, tags, expenses, invoices, time off, approvals, schedules) for everyone in it? Members and workspace settings are kept. This cannot be undone.') && wipeData()}><Trash2 size={15} /> Delete all data</Button>
           </div>
           {csvResult && <div className="text-sm text-[#555]">{csvResult}</div>}
           <p className="text-xs text-ck-muted">CSV columns recognised: Description, Project, Task, Tags, Billable, Start, End, Date, Duration. The Reports CSV export can be re-imported directly.</p>
         </Section>
-      </div>
+      </fieldset>
     </div>
   )
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({ id, title, hint, children }: { id?: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="ck-card space-y-4 p-5">
+    <section id={id} className="ck-card scroll-mt-4 space-y-4 p-5">
       <div>
         <h2 className="text-xs font-medium uppercase tracking-wide text-ck-muted">{title}</h2>
         {hint && <p className="mt-1 text-sm text-[#666]">{hint}</p>}

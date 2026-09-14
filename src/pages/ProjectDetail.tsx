@@ -1,18 +1,19 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Plus, Star, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Globe, Lock, Plus, Star, Trash2, UserPlus } from 'lucide-react'
 import { useStore } from '../store'
-import { Button, ProjectDot, Tabs, Toggle, cn } from '../components/ui'
+import { Avatar, Badge, Button, ProjectDot, Tabs, Toggle, cn } from '../components/ui'
+import { InviteMemberModal } from '../components/InviteMemberModal'
 import { ColorPicker, Progress } from './Projects'
 import { entrySeconds, formatDuration, formatMoney } from '../lib/time'
-import type { Project } from '../types'
+import type { Member, Project } from '../types'
 
-type Tab = 'tasks' | 'status' | 'settings'
+type Tab = 'tasks' | 'status' | 'access' | 'settings'
 
 export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { state, dispatch, clientById, rateFor, costRateFor } = useStore()
+  const { state, dispatch, clientById, rateFor, costRateFor, can } = useStore()
   const project = state.projects.find((p) => p.id === id)
   const [tab, setTab] = useState<Tab>('tasks')
   const [taskName, setTaskName] = useState('')
@@ -61,17 +62,20 @@ export default function ProjectDetail() {
         </button>
         {project.archived && <span className="rounded-sm bg-black/5 px-2 py-0.5 text-xs font-medium uppercase text-ck-muted">Archived</span>}
         {project.isTemplate && <span className="rounded-sm bg-ck-blue-light px-2 py-0.5 text-xs font-medium uppercase text-ck-blue-dark">Template</span>}
+        {!project.isPublic && <span className="inline-flex items-center gap-1 rounded-sm bg-black/5 px-2 py-0.5 text-xs font-medium uppercase text-ck-muted"><Lock size={11} /> Private</span>}
         <span className="ml-auto font-mono text-lg text-[#555]">{formatDuration(total, state.settings.durationFormat)}</span>
       </div>
 
-      <Tabs tabs={[{ id: 'tasks', label: 'Tasks' }, { id: 'status', label: 'Status' }, { id: 'settings', label: 'Settings' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: 'tasks', label: 'Tasks' }, { id: 'status', label: 'Status' }, { id: 'access', label: 'Access' }, { id: 'settings', label: 'Settings' }]} value={tab} onChange={setTab} />
 
       {tab === 'tasks' && (
         <div className="ck-card">
-          <div className="flex gap-2 border-b border-ck-border-light p-3">
-            <input className="ck-input" placeholder="Add new task" value={taskName} onChange={(e) => setTaskName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} />
-            <Button onClick={addTask} disabled={!taskName.trim()}><Plus size={16} /> Add</Button>
-          </div>
+          {can.manage && (
+            <div className="flex gap-2 border-b border-ck-border-light p-3">
+              <input className="ck-input" placeholder="Add new task" value={taskName} onChange={(e) => setTaskName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTask()} />
+              <Button onClick={addTask} disabled={!taskName.trim()}><Plus size={16} /> Add</Button>
+            </div>
+          )}
           {project.tasks.length === 0 ? (
             <div className="px-4 py-10 text-center text-ck-muted">No tasks yet. Tasks let you split a project into smaller pieces, each with its own rate.</div>
           ) : (
@@ -154,8 +158,10 @@ export default function ProjectDetail() {
         </div>
       )}
 
+      {tab === 'access' && <ProjectAccess project={project} />}
+
       {tab === 'settings' && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <fieldset disabled={!can.manage} className="grid min-w-0 gap-4 md:grid-cols-2">
           <div className="ck-card space-y-4 p-4">
             <div>
               <label className="ck-label">Name</label>
@@ -202,8 +208,91 @@ export default function ProjectDetail() {
               <Button variant="danger" onClick={() => { if (confirm(`Delete project "${project.name}"? Its ${entries.length} time entries will be kept without a project.`)) { dispatch({ type: 'project/delete', id: project.id }); navigate('/projects') } }}>Delete</Button>
             </div>
           </div>
-        </div>
+        </fieldset>
       )}
+    </div>
+  )
+}
+
+const SEES_ALL: Member['role'][] = ['Owner', 'Admin', 'Manager']
+
+function ProjectAccess({ project }: { project: Project }) {
+  const { state, dispatch, memberById, can } = useStore()
+  const [pick, setPick] = useState('')
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const withAccess = project.memberIds.map((id) => memberById(id)).filter((m): m is Member => !!m)
+  const addable = state.members.filter((m) => !project.memberIds.includes(m.id))
+
+  const add = () => {
+    if (!pick) return
+    dispatch({ type: 'project/addMember', projectId: project.id, memberId: pick })
+    setPick('')
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="ck-card space-y-3 p-4">
+        <div className="text-xs font-medium uppercase tracking-wide text-ck-muted">Visibility</div>
+        {[true, false].map((pub) => (
+          <label
+            key={String(pub)}
+            className={cn(
+              'flex gap-3 rounded-sm border p-3',
+              project.isPublic === pub ? 'border-ck-blue bg-ck-blue-light/40' : 'border-ck-border-light',
+              can.manage ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
+            )}
+          >
+            <input type="radio" name="visibility" className="mt-1" checked={project.isPublic === pub} disabled={!can.manage} onChange={() => dispatch({ type: 'project/update', id: project.id, patch: { isPublic: pub } })} />
+            <span>
+              <span className="flex items-center gap-1.5 font-medium">{pub ? <Globe size={15} /> : <Lock size={15} />} {pub ? 'Public' : 'Private'}</span>
+              <span className="block text-sm text-[#666]">
+                {pub ? 'Everyone in the workspace can see this project and track time on it.' : 'Only the project members, plus owners, admins and managers.'}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="ck-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="text-xs font-medium uppercase tracking-wide text-ck-muted">Project members</div>
+          {can.admin && <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}><UserPlus size={14} /> Invite by email</Button>}
+        </div>
+        {can.manage && (
+          <div className="mb-3 flex gap-2">
+            <select className="ck-select min-w-0 flex-1" value={pick} onChange={(e) => setPick(e.target.value)}>
+              <option value="">Add a workspace member…</option>
+              {addable.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.email})</option>)}
+            </select>
+            <Button onClick={add} disabled={!pick}><Plus size={16} /> Add</Button>
+          </div>
+        )}
+        {withAccess.length === 0 ? (
+          <div className="py-6 text-center text-sm text-ck-muted">No project members yet.</div>
+        ) : (
+          <ul className="divide-y divide-ck-border-light">
+            {withAccess.map((m) => (
+              <li key={m.id} className="flex items-center gap-3 py-2">
+                <Avatar name={m.name} size={28} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm">{m.name}</div>
+                  <div className="truncate text-xs text-ck-muted">{m.email}{SEES_ALL.includes(m.role) && ` · ${m.role}, sees every project`}</div>
+                </div>
+                {m.status === 'Pending' && <Badge tone="orange">Invited</Badge>}
+                {can.manage && (
+                  <button type="button" className="text-ck-muted hover:text-ck-red" title="Remove from project" onClick={() => dispatch({ type: 'project/removeMember', projectId: project.id, memberId: m.id })}>
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {project.isPublic && withAccess.length > 0 && (
+          <p className="mt-3 text-xs text-ck-muted">The project is public, so this list only limits access once you make it private.</p>
+        )}
+      </div>
+      <InviteMemberModal open={inviteOpen} onClose={() => setInviteOpen(false)} projectId={project.id} />
     </div>
   )
 }

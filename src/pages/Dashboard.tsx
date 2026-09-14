@@ -8,7 +8,7 @@ import { Donut } from './Reports'
 import { entrySeconds, formatDuration, formatMoney, presetRange, sumSeconds, weekDays, formatTime, toDateKey } from '../lib/time'
 
 export default function Dashboard() {
-  const { state, now, running, projectById, rateFor, costRateFor } = useStore()
+  const { state, myEntries, now, running, projectById, rateFor, costRateFor } = useStore()
   const { settings } = state
   const today = new Date()
   const days = weekDays(today, settings.weekStart)
@@ -16,10 +16,10 @@ export default function Dashboard() {
 
   const weekEntries = useMemo(() => {
     const f = wFrom.getTime(), t = wTo.getTime()
-    return state.entries.filter((e) => { const s = new Date(e.start).getTime(); return s >= f && s <= t })
-  }, [state.entries, wFrom, wTo])
+    return myEntries.filter((e) => { const s = new Date(e.start).getTime(); return s >= f && s <= t })
+  }, [myEntries, wFrom, wTo])
 
-  const todaySecs = sumSeconds(state.entries.filter((e) => isSameDay(new Date(e.start), today)), now)
+  const todaySecs = sumSeconds(myEntries.filter((e) => isSameDay(new Date(e.start), today)), now)
   const weekSecs = sumSeconds(weekEntries, now)
   const billableSecs = sumSeconds(weekEntries.filter((e) => e.billable), now)
   const weekAmount = weekEntries.reduce((a, e) => a + (entrySeconds(e, now) / 3600) * rateFor(e), 0)
@@ -53,7 +53,7 @@ export default function Dashboard() {
   const offToday = state.timeOffRequests.filter((r) => r.status === 'Approved' && r.startDate <= todayKey && r.endDate >= todayKey)
   const scheduledToday = state.schedules.filter((s) => s.startDate <= todayKey && s.endDate >= todayKey)
 
-  const recent = useMemo(() => [...state.entries].sort((a, b) => b.start.localeCompare(a.start)).slice(0, 8), [state.entries])
+  const recent = useMemo(() => [...myEntries].sort((a, b) => b.start.localeCompare(a.start)).slice(0, 8), [myEntries])
 
   return (
     <div className="space-y-4">

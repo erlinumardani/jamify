@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
+import { PENDING_INVITE_KEY, readLocal } from './lib/local'
 
 export interface AuthUser {
   id: string
@@ -43,9 +44,18 @@ export function AuthProvider({ children }: { children: (user: AuthUser) => React
   const [session, setSession] = useState<Session | null | undefined>(undefined)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    // Google sign-in started on an invitation page returns to the app root: send the user back to it
+    const followPendingInvite = (s: Session | null) => {
+      const token = readLocal(PENDING_INVITE_KEY)
+      if (s && token) window.location.replace(`/invite/${encodeURIComponent(token)}`)
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      followPendingInvite(data.session)
+    })
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
+      if (event === 'SIGNED_IN') followPendingInvite(s)
       // drop the ?code=... left behind by the OAuth redirect
       if (event === 'SIGNED_IN' && new URL(window.location.href).searchParams.has('code')) {
         const url = new URL(window.location.href)
@@ -167,13 +177,13 @@ function AuthPage() {
             )}
           </div>
         </form>
-        <p className="mt-4 text-center text-xs text-ck-muted">Your data is stored securely in Supabase and only visible to you.</p>
+        <p className="mt-4 text-center text-xs text-ck-muted">Your data is stored securely in Supabase and shared only with your workspace.</p>
       </div>
     </div>
   )
 }
 
-function GoogleIcon() {
+export function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />

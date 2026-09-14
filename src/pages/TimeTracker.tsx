@@ -13,7 +13,7 @@ import type { TimeEntry } from '../types'
 type Mode = 'timer' | 'manual'
 
 export default function TimeTracker() {
-  const { state, running, now, startTimer, stopTimer, updateEntry, addEntry, missingFields, isLocked, dispatch } = useStore()
+  const { state, myEntries, running, now, startTimer, stopTimer, updateEntry, addEntry, missingFields, isLocked, dispatch } = useStore()
   const { settings } = state
   const [mode, setMode] = useState<Mode>('timer')
 
@@ -75,7 +75,7 @@ export default function TimeTracker() {
   }
 
   const groups = useMemo(() => {
-    const finished = [...state.entries].filter((e) => e.end !== null).sort((a, b) => b.start.localeCompare(a.start))
+    const finished = [...myEntries].filter((e) => e.end !== null).sort((a, b) => b.start.localeCompare(a.start))
     const weeks: { key: string; label: string; days: { key: string; entries: TimeEntry[] }[] }[] = []
     for (const e of finished) {
       const d = new Date(e.start)
@@ -88,15 +88,15 @@ export default function TimeTracker() {
       day.entries.push(e)
     }
     return weeks
-  }, [state.entries, settings.weekStart])
+  }, [myEntries, settings.weekStart])
 
   const [visibleWeeks, setVisibleWeeks] = useState(3)
 
   // bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set())
   useEffect(() => {
-    setSelected((s) => { const ids = new Set(state.entries.map((e) => e.id)); const n = new Set([...s].filter((id) => ids.has(id))); return n.size === s.size ? s : n })
-  }, [state.entries])
+    setSelected((s) => { const ids = new Set(myEntries.map((e) => e.id)); const n = new Set([...s].filter((id) => ids.has(id))); return n.size === s.size ? s : n })
+  }, [myEntries])
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const selectDay = (entries: TimeEntry[]) => setSelected((s) => {
     const n = new Set(s)
@@ -192,7 +192,7 @@ export default function TimeTracker() {
             {(close) => <ProjectMenu value={{ projectId: null, taskId: null }} onChange={(v) => { bulk(v); close() }} />}
           </Popover>
           <div className="rounded-sm border border-ck-border">
-            <TagPicker value={[]} onChange={(t) => { const tag = t[0]; if (!tag) return; for (const id of ids) { const e = state.entries.find((x) => x.id === id); if (e && !e.tagIds.includes(tag)) updateEntry(id, { tagIds: [...e.tagIds, tag] }) } }} />
+            <TagPicker value={[]} onChange={(t) => { const tag = t[0]; if (!tag) return; for (const id of ids) { const e = myEntries.find((x) => x.id === id); if (e && !e.tagIds.includes(tag)) updateEntry(id, { tagIds: [...e.tagIds, tag] }) } }} />
           </div>
           <button type="button" className="rounded-sm border border-ck-border px-2.5 py-1 hover:bg-ck-bg" onClick={() => bulk({ billable: true })}>Set billable</button>
           <button type="button" className="rounded-sm border border-ck-border px-2.5 py-1 hover:bg-ck-bg" onClick={() => bulk({ billable: false })}>Set non-billable</button>

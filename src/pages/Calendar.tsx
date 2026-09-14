@@ -11,7 +11,7 @@ const HOUR_PX = 56
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 export default function CalendarPage() {
-  const { state, now, projectById, tagById, memberById, isLocked } = useStore()
+  const { state, myEntries, now, projectById, tagById, memberById, isLocked } = useStore()
   const { settings } = state
   const [anchor, setAnchor] = useState(() => new Date())
   const [view, setView] = useState<'week' | 'day'>('week')
@@ -26,8 +26,8 @@ export default function CalendarPage() {
   }, [])
 
   const entriesByDay = useMemo(
-    () => days.map((d) => state.entries.filter((e) => isSameDay(new Date(e.start), d))),
-    [days, state.entries],
+    () => days.map((d) => myEntries.filter((e) => isSameDay(new Date(e.start), d))),
+    [days, myEntries],
   )
   const timeOffByDay = useMemo(
     () => days.map((d) => { const k = toDateKey(d); return state.timeOffRequests.filter((r) => r.status === 'Approved' && r.startDate <= k && r.endDate >= k) }),
