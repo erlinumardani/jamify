@@ -258,9 +258,22 @@ function ProjectAccess({ project }: { project: Project }) {
           <div className="text-xs font-medium uppercase tracking-wide text-ck-muted">Project members</div>
           {can.admin && <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}><UserPlus size={14} /> Invite by email</Button>}
         </div>
+        {project.isPublic ? (
+          <div className="flex items-start gap-3 rounded-sm bg-ck-bg p-3 text-sm text-[#555]">
+            <Globe size={16} className="mt-0.5 shrink-0 text-ck-muted" aria-hidden="true" />
+            <div>
+              Everyone in the workspace ({state.members.length} {state.members.length === 1 ? 'person' : 'people'}) can see this project and track time on it.
+              {can.manage && (
+                <> <button type="button" className="text-ck-blue-dark hover:underline" onClick={() => dispatch({ type: 'project/update', id: project.id, patch: { isPublic: false } })}>Make it private</button> to choose who has access.</>
+              )}
+            </div>
+          </div>
+        ) : (
+        <>
         {can.manage && (
           <div className="mb-3 flex gap-2">
-            <select className="ck-select min-w-0 flex-1" value={pick} onChange={(e) => setPick(e.target.value)}>
+            <label htmlFor="project-add-member" className="sr-only">Add a workspace member</label>
+            <select id="project-add-member" className="ck-select min-w-0 flex-1" value={pick} onChange={(e) => setPick(e.target.value)}>
               <option value="">Add a workspace member…</option>
               {addable.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.email})</option>)}
             </select>
@@ -268,7 +281,7 @@ function ProjectAccess({ project }: { project: Project }) {
           </div>
         )}
         {withAccess.length === 0 ? (
-          <div className="py-6 text-center text-sm text-ck-muted">No project members yet.</div>
+          <div className="py-6 text-center text-sm text-[#666]">Only owners, admins and managers can see this project. Add the people who work on it.</div>
         ) : (
           <ul className="divide-y divide-ck-border-light">
             {withAccess.map((m) => (
@@ -280,7 +293,7 @@ function ProjectAccess({ project }: { project: Project }) {
                 </div>
                 {m.status === 'Pending' && <Badge tone="orange">Invited</Badge>}
                 {can.manage && (
-                  <button type="button" className="text-ck-muted hover:text-ck-red" title="Remove from project" onClick={() => dispatch({ type: 'project/removeMember', projectId: project.id, memberId: m.id })}>
+                  <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ck-muted hover:bg-red-50 hover:text-ck-red" aria-label={`Remove ${m.name} from project`} title="Remove from project" onClick={() => dispatch({ type: 'project/removeMember', projectId: project.id, memberId: m.id })}>
                     <Trash2 size={15} />
                   </button>
                 )}
@@ -288,8 +301,7 @@ function ProjectAccess({ project }: { project: Project }) {
             ))}
           </ul>
         )}
-        {project.isPublic && withAccess.length > 0 && (
-          <p className="mt-3 text-xs text-ck-muted">The project is public, so this list only limits access once you make it private.</p>
+        </>
         )}
       </div>
       <InviteMemberModal open={inviteOpen} onClose={() => setInviteOpen(false)} projectId={project.id} />

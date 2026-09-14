@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { Member } from '../types'
 
 /* ── invitations ───────────────────────────────────────────── */
 
@@ -36,7 +37,28 @@ async function callInvite<T>(body: Record<string, unknown>): Promise<T> {
 export const sendInvite = (memberId: string) =>
   callInvite<InviteResult>({ action: 'send', memberId, appUrl: window.location.origin })
 
-export const signUpFromInvite = (token: string, password: string, name: string) =>
+/** Outcome of inviting one member: the edge function's result, or why the invitation couldn't be created. */
+export interface InviteRow {
+  member: Member
+  res?: InviteResult
+  error?: string
+}
+
+/** Sends invitations one at a time (gentle on the SMTP server); a failure is recorded on its row. */
+export async function sendInvites(members: Member[], onProgress?: (done: number) => void): Promise<InviteRow[]> {
+  const rows: InviteRow[] = []
+  for (const member of members) {
+    try {
+      rows.push({ member, res: await sendInvite(member.id) })
+    } catch (e) {
+      rows.push({ member, error: (e as Error).message })
+    }
+    onProgress?.(rows.length)
+  }
+  return rows
+}
+
+export const signUpFromInvite =(token: string, password: string, name: string) =>
   callInvite<{ email: string }>({ action: 'signup', token, password, name })
 
 export async function getInvitation(token: string): Promise<InvitationInfo> {

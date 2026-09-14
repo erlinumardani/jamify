@@ -9,7 +9,8 @@
   --color-ck-border: #c6d2d9;
   --color-ck-border-light: #e4eaee;
   --color-ck-text: #333333;
-  --color-ck-muted: #999999;
+  /* #757575 keeps secondary text at 4.6:1 on white (WCAG AA) */
+  --color-ck-muted: #757575;
   --color-ck-red: #f44336;
   --color-ck-red-dark: #d32f2f;
   --color-ck-green: #4caf50;
@@ -51,6 +52,20 @@ input::placeholder, textarea::placeholder {
   @apply h-9 rounded-sm border border-ck-border bg-white px-2 text-sm outline-none focus:border-ck-blue;
 }
 
+.ck-input:disabled, .ck-select:disabled {
+  @apply cursor-not-allowed bg-ck-bg text-[#777];
+}
+
+.ck-input[aria-invalid="true"], .ck-select[aria-invalid="true"] {
+  @apply border-ck-red focus:border-ck-red;
+}
+
+/* keyboard focus is always visible; mouse clicks don't draw a ring */
+:where(button, a, summary, [role="switch"], input[type="radio"], input[type="checkbox"]):focus-visible {
+  outline: 2px solid var(--color-ck-blue);
+  outline-offset: 2px;
+}
+
 .ck-card {
   @apply rounded-sm border border-ck-border-light bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)];
 }
@@ -86,3 +101,7 @@ input::placeholder, textarea::placeholder {
   to { transform: scaleY(1); }
 }
 .ck-grow { transform-origin: bottom; animation: ck-grow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-pulse, .ck-grow, .ck-fade-in { animation: none; }
+}

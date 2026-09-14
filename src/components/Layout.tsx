@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '../store'
 import { useAuth } from '../auth'
-import { Avatar, Popover, cn } from './ui'
+import { Avatar, Button, Modal, Popover, Spinner, cn } from './ui'
 import { entrySeconds, formatDuration } from '../lib/time'
 
 const nav = [
@@ -159,22 +159,14 @@ export default function Layout() {
 }
 
 function WorkspaceSwitcher() {
-  const { workspace, workspaces, switchWorkspace, createWorkspace, can } = useStore()
+  const { workspace, workspaces, switchWorkspace, can } = useStore()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [creating, setCreating] = useState(false)
   const itemCls = 'flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-ck-bg'
 
-  const create = async () => {
-    const name = prompt('Name of the new workspace')?.trim()
-    if (!name) return
-    try {
-      await createWorkspace(name)
-    } catch (e) {
-      alert(`Could not create the workspace: ${(e as Error).message}`)
-    }
-  }
-
   return (
+    <>
     <Popover
       width={260}
       trigger={() => (
@@ -200,11 +192,59 @@ function WorkspaceSwitcher() {
               <Settings size={15} className="text-ck-muted" /> Workspace settings
             </button>
           )}
-          <button type="button" className={itemCls} onClick={() => { close(); void create() }}>
+          <button type="button" className={itemCls} onClick={() => { close(); setCreating(true) }}>
             <Plus size={15} className="text-ck-muted" /> Create workspace
           </button>
         </div>
       )}
     </Popover>
+    <CreateWorkspaceModal open={creating} onClose={() => setCreating(false)} />
+    </>
+  )
+}
+
+function CreateWorkspaceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { createWorkspace } = useStore()
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const close = () => {
+    if (busy) return
+    setName(''); setError(null)
+    onClose()
+  }
+  const submit = async () => {
+    if (!name.trim() || busy) return
+    setBusy(true); setError(null)
+    try {
+      // switches to the new workspace, which reloads the app
+      await createWorkspace(name.trim())
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="Create workspace"
+      footer={<>
+        <Button variant="ghost" onClick={close} disabled={busy}>Cancel</Button>
+        <Button onClick={submit} disabled={busy || !name.trim()}>{busy ? <><Spinner /> Creating…</> : 'Create'}</Button>
+      </>}
+    >
+      <label htmlFor="new-workspace-name" className="ck-label">Workspace name</label>
+      <input
+        id="new-workspace-name" autoFocus className="ck-input" placeholder="e.g. Acme Studio" value={name}
+        onChange={(e) => { setName(e.target.value); setError(null) }} onKeyDown={(e) => e.key === 'Enter' && submit()}
+        aria-invalid={!!error} aria-describedby="new-workspace-msg"
+      />
+      <p id="new-workspace-msg" role={error ? 'alert' : undefined} className={cn('mt-1 text-xs', error ? 'text-ck-red' : 'text-[#666]')}>
+        {error ?? "You'll own it and can invite people. Switch between workspaces from this menu."}
+      </p>
+    </Modal>
   )
 }

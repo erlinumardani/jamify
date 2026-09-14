@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
+import { Eye, EyeOff, X } from 'lucide-react'
 
 export function cn(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(' ')
@@ -99,6 +99,7 @@ export function Popover({
 export function Modal({ open, onClose, title, children, footer, width = 480 }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; width?: number
 }) {
+  const titleId = useId()
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -114,14 +115,45 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: {
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId}
       >
         <div className="flex items-center justify-between border-b border-ck-border-light px-6 py-4">
-          <h2 className="text-lg font-normal">{title}</h2>
+          <h2 id={titleId} className="text-lg font-normal">{title}</h2>
           <IconButton title="Close" onClick={onClose}><X size={18} /></IconButton>
         </div>
         <div className="px-6 py-5">{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-ck-border-light bg-ck-bg px-6 py-3">{footer}</div>}
       </div>
+    </div>
+  )
+}
+
+/** Inline busy indicator; inherits the text color of its button. */
+export function Spinner({ size = 14, className }: { size?: number; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn('inline-block shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent', className)}
+      style={{ width: size, height: size }}
+    />
+  )
+}
+
+/** Password field with a show/hide toggle. */
+export function PasswordInput({ className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  const [shown, setShown] = useState(false)
+  return (
+    <div className="relative">
+      <input {...rest} type={shown ? 'text' : 'password'} className={cn('ck-input pr-10', className)} />
+      <button
+        type="button"
+        onClick={() => setShown((s) => !s)}
+        aria-label={shown ? 'Hide password' : 'Show password'}
+        aria-pressed={shown}
+        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-sm text-ck-muted hover:text-ck-text"
+      >
+        {shown ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
     </div>
   )
 }

@@ -253,7 +253,7 @@ export default function SettingsPage() {
           <Section
             id="email"
             title="Email (SMTP)"
-            hint="Invitation emails are sent through this server. The password is encrypted in Supabase Vault and never sent back to the browser. Supabase blocks outgoing ports 25 and 587, so use 465 (SSL/TLS) or 2525 (STARTTLS)."
+            hint="Invitations are emailed through your own email provider. The password is encrypted in Supabase Vault and never shown again."
           >
             <SmtpSettings />
           </Section>

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { acceptInvitation, getInvitation, signUpFromInvite, type InvitationInfo } from '../lib/invites'
 import { PENDING_INVITE_KEY, WORKSPACE_KEY, readLocal, writeLocal } from '../lib/local'
 import { GoogleIcon } from '../auth'
+import { Avatar, PasswordInput, Spinner } from '../components/ui'
 
 /** /invite/:token — works signed out: log in or create the invited account, then join the workspace. */
 export default function InvitePage({ token }: { token: string }) {
@@ -113,16 +114,19 @@ export default function InvitePage({ token }: { token: string }) {
 
   return (
     <Shell title={`Join ${info.workspaceName}`}>
-      <p className="text-sm text-[#555]">
-        {info.inviterName ? <><b>{info.inviterName}</b> invited you to track time in </> : 'You were invited to '}
-        <b>{info.workspaceName}</b> on Jamify.
-      </p>
+      <div className="flex items-center gap-3">
+        <Avatar name={info.workspaceName ?? 'Workspace'} size={40} />
+        <p className="text-sm text-[#555]">
+          {info.inviterName ? <><b>{info.inviterName}</b> invited you to track time in </> : 'You were invited to '}
+          <b>{info.workspaceName}</b> on Jamify.
+        </p>
+      </div>
       <div className="rounded-sm bg-ck-bg px-3 py-2 text-sm text-[#555]">Invitation for <b>{email}</b></div>
 
       {session ? (
         emailMatches ? (
           <button type="button" onClick={accept} disabled={busy} className={primaryCls}>
-            {busy ? 'Joining…' : info.status === 'accepted' ? 'Open workspace' : 'Join workspace'}
+            {busy ? <><Spinner /> Joining…</> : info.status === 'accepted' ? 'Open workspace' : 'Join workspace'}
           </button>
         ) : (
           <>
@@ -135,32 +139,33 @@ export default function InvitePage({ token }: { token: string }) {
           {googleButton}
           <Divider />
           <div>
-            <label className="ck-label">Password</label>
-            <input className="ck-input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" autoFocus />
+            <label htmlFor="invite-password" className="ck-label">Password</label>
+            <PasswordInput id="invite-password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" autoFocus />
           </div>
-          <button type="submit" disabled={busy} className={primaryCls}>{busy ? 'Please wait…' : 'Log in and join'}</button>
+          <button type="submit" disabled={busy} className={primaryCls}>{busy ? <><Spinner /> Logging in…</> : 'Log in and join'}</button>
         </form>
       ) : (
         <form onSubmit={signUp} className="space-y-4">
           {googleButton}
           <Divider />
           <div>
-            <label className="ck-label">Your name</label>
-            <input className="ck-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoComplete="name" />
+            <label htmlFor="invite-name" className="ck-label">Your name</label>
+            <input id="invite-name" className="ck-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoComplete="name" />
           </div>
           <div>
-            <label className="ck-label">Choose a password</label>
-            <input className="ck-input" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete="new-password" autoFocus />
+            <label htmlFor="invite-new-password" className="ck-label">Choose a password</label>
+            <PasswordInput id="invite-new-password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete="new-password" autoFocus aria-describedby="invite-new-password-help" />
+            <p id="invite-new-password-help" className="mt-1 text-xs text-[#666]">You'll log in with {email} and this password.</p>
           </div>
-          <button type="submit" disabled={busy} className={primaryCls}>{busy ? 'Please wait…' : 'Create account and join'}</button>
+          <button type="submit" disabled={busy} className={primaryCls}>{busy ? <><Spinner /> Creating account…</> : 'Create account and join'}</button>
         </form>
       )}
-      {error && <div className="rounded-sm bg-red-50 px-3 py-2 text-sm text-ck-red">{error}</div>}
+      {error && <div role="alert" className="rounded-sm bg-red-50 px-3 py-2 text-sm text-red-900">{error}</div>}
     </Shell>
   )
 }
 
-const primaryCls = 'h-10 w-full rounded-sm bg-ck-blue text-sm font-medium uppercase tracking-wide text-white hover:bg-ck-blue-dark disabled:opacity-60'
+const primaryCls = 'inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-ck-blue text-sm font-medium uppercase tracking-wide text-white hover:bg-ck-blue-dark disabled:opacity-60'
 
 function Shell({ title, children }: { title?: string; children: ReactNode }) {
   return (
