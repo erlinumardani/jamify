@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Plus, Star } from 'lucide-react'
 import { useStore } from '../store'
+import { useFeedback } from './feedback'
 import { Popover, ProjectDot, cn } from './ui'
 import type { Project } from '../types'
 import { PROJECT_COLORS } from '../types'
@@ -16,7 +17,7 @@ export function ProjectLabel({ projectId, taskId, className, placeholder = 'Proj
   if (!p) {
     return (
       <span className={cn('inline-flex items-center gap-1 text-ck-blue', className)}>
-        <Plus size={14} /> {placeholder}
+        <Plus size={14} aria-hidden="true" /> {placeholder}
       </span>
     )
   }
@@ -47,7 +48,7 @@ export function ProjectPicker({
   if (disabled) {
     return (
       <div className={cn('flex max-w-full items-center px-2 py-1 text-left text-sm opacity-70', className)}>
-        <ProjectLabel {...value} placeholder={placeholder} />
+        {value.projectId ? <ProjectLabel {...value} placeholder={placeholder} /> : <span className="text-ck-muted">No project</span>}
       </div>
     )
   }
@@ -56,8 +57,8 @@ export function ProjectPicker({
       align={align}
       width={320}
       className={className}
-      trigger={() => (
-        <button type="button" className="flex max-w-full items-center rounded-sm px-2 py-1 text-left text-sm hover:bg-black/5">
+      trigger={(open) => (
+        <button type="button" aria-haspopup="true" aria-expanded={open} className="flex min-h-8 max-w-full items-center rounded-sm px-2 py-1 text-left text-sm hover:bg-black/5">
           <ProjectLabel {...value} placeholder={placeholder} />
         </button>
       )}
@@ -69,11 +70,13 @@ export function ProjectPicker({
 
 export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onChange: (v: ProjectSelection) => void }) {
   const { state, clientById, addProject, can } = useStore()
+  const { notify } = useFeedback()
   const [q, setQ] = useState('')
   const [expanded, setExpanded] = useState<string | null>(value.projectId)
+  const query = q.trim()
 
   const { favorites, groups } = useMemo(() => {
-    const active = state.projects.filter((p) => !p.archived && !p.isTemplate && p.name.toLowerCase().includes(q.toLowerCase()))
+    const active = state.projects.filter((p) => !p.archived && !p.isTemplate && p.name.toLowerCase().includes(q.trim().toLowerCase()))
     const favorites = active.filter((p) => p.favorite).sort((a, b) => a.name.localeCompare(b.name))
     const map = new Map<string, Project[]>()
     for (const p of active) {
@@ -87,12 +90,12 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
   }, [state.projects, q, clientById])
 
   const createProject = () => {
-    const name = q.trim()
-    if (!name || !can.manage) return
+    if (!query || !can.manage) return
     const p = addProject({
-      name, clientId: null, color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)], billable: state.settings.billableByDefault,
+      name: query, clientId: null, color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)], billable: state.settings.billableByDefault,
       hourlyRate: null, estimateHours: null, budget: null, isTemplate: false, favorite: false, note: '',
     })
+    notify(`Project "${p.name}" created`)
     onChange({ projectId: p.id, taskId: null })
   }
 
@@ -101,21 +104,23 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
       <div className={cn('flex items-center hover:bg-ck-bg', value.projectId === p.id && !value.taskId && 'bg-ck-blue-light')}>
         <button
           type="button"
+          aria-pressed={value.projectId === p.id && !value.taskId}
           onClick={() => onChange({ projectId: p.id, taskId: null })}
           className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-sm"
         >
           <ProjectDot color={p.color} />
           <span className="truncate" style={{ color: p.color }}>{p.name}</span>
-          {p.favorite && <Star size={11} className="shrink-0 fill-amber-400 text-amber-400" />}
+          {p.favorite && <Star size={11} aria-label="Favorite" className="shrink-0 fill-amber-400 text-amber-400" />}
         </button>
         {p.tasks.length > 0 && (
           <button
             type="button"
             onClick={() => setExpanded(expanded === p.id ? null : p.id)}
-            className="px-2 text-xs text-ck-muted hover:text-ck-text"
-            title="Tasks"
+            aria-expanded={expanded === p.id}
+            aria-label={`${expanded === p.id ? 'Hide' : 'Show'} ${p.tasks.length} task${p.tasks.length > 1 ? 's' : ''} of ${p.name}`}
+            className="flex h-8 min-w-8 items-center justify-center px-2 text-xs text-ck-muted hover:text-ck-text"
           >
-            <span className="inline-flex items-center gap-0.5">{p.tasks.length} {expanded === p.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+            <span className="inline-flex items-center gap-0.5" aria-hidden="true">{p.tasks.length} {expanded === p.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
           </button>
         )}
       </div>
@@ -124,10 +129,12 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
           <button
             key={t.id}
             type="button"
+            aria-pressed={value.taskId === t.id}
             onClick={() => onChange({ projectId: p.id, taskId: t.id })}
             className={cn('flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left text-sm hover:bg-ck-bg', value.taskId === t.id && 'bg-ck-blue-light')}
           >
             <span className={cn(t.done && 'text-ck-muted line-through')}>{t.name}</span>
+            {t.done && <span className="sr-only">(done)</span>}
           </button>
         ))}
     </div>
@@ -138,6 +145,7 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
       <div className="border-b border-ck-border-light p-2">
         <input
           autoFocus
+          aria-label="Search projects"
           className="ck-input h-8"
           placeholder="Search project..."
           value={q}
@@ -148,6 +156,7 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
       <div className="flex-1 overflow-y-auto py-1">
         <button
           type="button"
+          aria-pressed={!value.projectId}
           onClick={() => onChange({ projectId: null, taskId: null })}
           className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-ck-bg', !value.projectId && 'bg-ck-blue-light')}
         >
@@ -166,18 +175,21 @@ export function ProjectMenu({ value, onChange }: { value: ProjectSelection; onCh
           </div>
         ))}
         {groups.length === 0 && (
-          <div className="px-3 py-3 text-center text-sm text-ck-muted">No projects found</div>
+          <div className="px-3 py-3 text-center text-sm text-ck-muted">
+            {query ? `No projects match "${query}".` : 'No projects yet.'}
+            {!can.manage && <div className="mt-1 text-xs">Only managers and admins can create projects.</div>}
+          </div>
         )}
       </div>
       {can.manage && (
         <div className="border-t border-ck-border-light p-2">
           <button
             type="button"
-            disabled={!q.trim()}
+            disabled={!query}
             onClick={createProject}
-            className="flex w-full items-center justify-center gap-1 rounded-sm border border-ck-blue py-1.5 text-xs font-medium uppercase tracking-wide text-ck-blue hover:bg-ck-blue-light disabled:opacity-40"
+            className="flex w-full items-center justify-center gap-1 rounded-sm border border-ck-blue py-1.5 text-xs font-medium uppercase tracking-wide text-ck-blue hover:bg-ck-blue-light disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Plus size={14} /> Create {q.trim() ? `"${q.trim()}"` : 'new project'}
+            <Plus size={14} aria-hidden="true" /> <span className="truncate">Create {query ? `"${query}"` : 'new project'}</span>
           </button>
         </div>
       )}

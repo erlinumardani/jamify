@@ -5,6 +5,7 @@ import type {
 import { NotAMemberError, createWorkspace as createWorkspaceRow, listWorkspaces, loadWorkspace, persist, type WorkspaceCtx } from './lib/db'
 import { WORKSPACE_KEY, readLocal, writeLocal } from './lib/local'
 import { useAuth, type AuthUser } from './auth'
+import { Skeleton } from './components/ui'
 
 const uid = () => crypto.randomUUID()
 
@@ -395,11 +396,20 @@ export function StoreProvider({ user, children }: { user: AuthUser; children: Re
     )
   }
   if (!api) {
+    // shaped like the app so nothing jumps when the workspace arrives
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex items-center gap-3 text-sm text-ck-muted">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-ck-border border-t-ck-blue" />
-          Loading your workspace…
+      <div className="flex h-full" role="status" aria-label="Loading your workspace">
+        <div className="hidden w-[220px] shrink-0 space-y-4 border-r border-ck-border-light bg-white p-5 lg:block">
+          <Skeleton className="h-7 w-28" />
+          {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-4 w-36" />)}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-14 items-center border-b border-ck-border-light bg-white px-6"><Skeleton className="h-5 w-40" /></div>
+          <div className="mx-auto w-full max-w-[1280px] space-y-4 p-4 md:p-6">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
         </div>
       </div>
     )

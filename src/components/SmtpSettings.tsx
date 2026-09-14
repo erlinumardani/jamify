@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import { useAuth } from '../auth'
 import { Button, PasswordInput, Spinner, cn } from './ui'
 import { SmtpErrorHelp } from './SmtpErrorHelp'
+import { useFeedback } from './feedback'
 import { deleteSmtpSettings, getSmtpSettings, saveSmtpSettings, sendTestEmail, type SmtpSettings as SavedSmtp } from '../lib/invites'
 
 interface Provider {
@@ -62,6 +63,7 @@ const toForm = (s: SavedSmtp | null): Form =>
 export function SmtpSettings() {
   const { workspace } = useStore()
   const { user } = useAuth()
+  const { confirm } = useFeedback()
   const [saved, setSaved] = useState<SavedSmtp | null | undefined>(undefined)
   const [form, setForm] = useState<Form>(EMPTY)
   const [other, setOther] = useState(false)
@@ -154,7 +156,13 @@ export function SmtpSettings() {
   }
 
   const remove = async () => {
-    if (!confirm('Remove the SMTP settings? Invitations will no longer be emailed; you can still copy and share invitation links.')) return
+    const ok = await confirm({
+      title: 'Remove email settings?',
+      message: 'Invitations will no longer be emailed. You can still copy and share invitation links.',
+      confirmLabel: 'Remove settings',
+      danger: true,
+    })
+    if (!ok) return
     setBusy('remove'); setNotice(null); setSmtpError(null)
     try {
       await deleteSmtpSettings(workspace.id)

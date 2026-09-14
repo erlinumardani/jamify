@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, BarChart3, Briefcase, Calendar, CalendarRange, Check, ChevronDown, ClipboardCheck, Clock, FileText, FolderKanban,
@@ -43,7 +43,18 @@ export default function Layout() {
   const { user, signOut } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  const mainRef = useRef<HTMLElement>(null)
   const showMiniTimer = running && !location.pathname.startsWith('/tracker')
+
+  // every page opens at the top instead of the previous page's scroll position
+  useEffect(() => { mainRef.current?.scrollTo(0, 0) }, [location.pathname])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMobileOpen(false)
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [mobileOpen])
   const pending = state.approvals.filter((a) => a.status === 'Pending').length + state.timeOffRequests.filter((r) => r.status === 'Pending').length
 
   const sidebar = (
@@ -51,7 +62,7 @@ export default function Layout() {
       <div className="flex h-14 items-center gap-2 px-5">
         <img src="/favicon.svg" alt="" className="h-7 w-7" />
         <span className="text-lg font-medium tracking-tight">jamify</span>
-        <button type="button" className="ml-auto text-ck-muted lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+        <button type="button" className="ml-auto flex h-9 w-9 items-center justify-center rounded-full text-ck-muted hover:bg-black/5 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close menu">
           <X size={18} />
         </button>
       </div>
@@ -61,9 +72,13 @@ export default function Layout() {
             <div className="px-5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-ck-muted">{group.section}</div>
             {group.items.map((item) => (
               <NavLink key={item.to} to={item.to} onClick={() => setMobileOpen(false)} className={({ isActive }) => linkCls(isActive)}>
-                <item.icon size={18} strokeWidth={1.75} />
+                <item.icon size={18} strokeWidth={1.75} aria-hidden="true" />
                 <span className="flex-1">{item.label}</span>
-                {item.to === '/approvals' && pending > 0 && <span className="rounded-full bg-ck-blue px-1.5 text-[10px] font-medium text-white">{pending}</span>}
+                {item.to === '/approvals' && pending > 0 && (
+                  <span className="min-w-[18px] rounded-full bg-ck-blue px-1.5 text-center text-[10px] font-medium leading-[18px] text-white">
+                    {pending}<span className="sr-only"> waiting for a decision</span>
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>
@@ -84,17 +99,20 @@ export default function Layout() {
 
   return (
     <div className="flex h-full">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-[70] focus:rounded-sm focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow-lg">
+        Skip to content
+      </a>
       <div className="hidden h-full lg:block">{sidebar}</div>
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 flex lg:hidden">
+        <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-label="Main menu">
           <div className="h-full shadow-2xl">{sidebar}</div>
-          <div className="flex-1 bg-black/40" onClick={() => setMobileOpen(false)} />
+          <div className="flex-1 bg-black/40" onClick={() => setMobileOpen(false)} aria-hidden="true" />
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-ck-border-light bg-white px-4 lg:px-6">
-          <button type="button" className="text-[#555] lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+          <button type="button" className="-ml-2 flex h-10 w-10 items-center justify-center rounded-full text-[#555] hover:bg-black/5 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu" aria-expanded={mobileOpen}>
             <Menu size={22} />
           </button>
           <WorkspaceSwitcher />
@@ -102,24 +120,27 @@ export default function Layout() {
 
           <div className="ml-auto flex items-center gap-3">
             {showMiniTimer && (
-              <NavLink to="/tracker" className="flex items-center gap-2 rounded-sm border border-ck-border-light bg-ck-bg px-2.5 py-1 text-sm hover:border-ck-blue">
-                <span className="h-2 w-2 rounded-full bg-ck-red ck-pulse" />
-                <span className="font-mono tabular-nums">{formatDuration(entrySeconds(running, now))}</span>
+              <div className="flex items-center gap-1 rounded-sm border border-ck-border-light bg-ck-bg py-0.5 pl-2 pr-0.5 text-sm">
+                <NavLink to="/tracker" className="flex items-center gap-2 rounded-sm px-0.5 hover:text-ck-blue" aria-label="Timer running, open the time tracker">
+                  <span className="h-2 w-2 rounded-full bg-ck-red ck-pulse" aria-hidden="true" />
+                  <span className="font-mono tabular-nums">{formatDuration(entrySeconds(running, now))}</span>
+                </NavLink>
                 <button
                   type="button"
-                  onClick={(e) => { e.preventDefault(); stopTimer() }}
-                  className="flex h-5 w-5 items-center justify-center rounded-full bg-ck-red text-white hover:bg-ck-red-dark"
+                  onClick={stopTimer}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-ck-red text-white hover:bg-ck-red-dark"
+                  aria-label="Stop timer"
                   title="Stop timer"
                 >
-                  <Square size={9} fill="currentColor" />
+                  <Square size={10} fill="currentColor" aria-hidden="true" />
                 </button>
-              </NavLink>
+              </div>
             )}
             <Popover
               align="right"
               width={240}
               trigger={() => (
-                <button type="button" className="flex items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-black/5">
+                <button type="button" className="flex items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-black/5" aria-label="Account menu" aria-haspopup="menu">
                   <span className="hidden text-sm text-[#555] md:inline">{currentUser.name}</span>
                   <Avatar name={currentUser.name} size={30} src={user.avatarUrl} />
                 </button>
@@ -141,14 +162,14 @@ export default function Layout() {
         </header>
 
         {syncError && (
-          <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-ck-red">
-            <AlertTriangle size={16} />
+          <div role="alert" className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-900">
+            <AlertTriangle size={16} className="shrink-0 text-ck-red" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">{syncError}</span>
             <button type="button" className="text-xs font-medium uppercase hover:underline" onClick={() => window.location.reload()}>Reload</button>
             <button type="button" className="text-xs font-medium uppercase hover:underline" onClick={clearSyncError}>Dismiss</button>
           </div>
         )}
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main ref={mainRef} id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto outline-none">
           <div className="mx-auto max-w-[1280px] p-4 md:p-6">
             <Outlet />
           </div>

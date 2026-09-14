@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type FormEvent, type Re
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { PENDING_INVITE_KEY, readLocal } from './lib/local'
+import { PasswordInput, Spinner } from './components/ui'
 
 export interface AuthUser {
   id: string
@@ -152,22 +153,22 @@ function AuthPage() {
           </div>
           {mode === 'signup' && (
             <div>
-              <label className="ck-label">Name</label>
-              <input className="ck-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" autoComplete="name" />
+              <label htmlFor="auth-name" className="ck-label">Name</label>
+              <input id="auth-name" className="ck-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" autoComplete="name" />
             </div>
           )}
           <div>
-            <label className="ck-label">Email</label>
-            <input className="ck-input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" autoComplete="email" autoFocus />
+            <label htmlFor="auth-email" className="ck-label">Email</label>
+            <input id="auth-email" className="ck-input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" autoComplete="email" autoFocus />
           </div>
           <div>
-            <label className="ck-label">Password</label>
-            <input className="ck-input" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />
+            <label htmlFor="auth-password" className="ck-label">Password</label>
+            <PasswordInput id="auth-password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />
           </div>
-          {error && <div className="rounded-sm bg-red-50 px-3 py-2 text-sm text-ck-red">{error}</div>}
-          {notice && <div className="rounded-sm bg-green-50 px-3 py-2 text-sm text-green-700">{notice}</div>}
-          <button type="submit" disabled={busy} className="h-10 w-full rounded-sm bg-ck-blue text-sm font-medium uppercase tracking-wide text-white hover:bg-ck-blue-dark disabled:opacity-60">
-            {busy ? 'Please wait…' : mode === 'signin' ? 'Log in' : 'Sign up'}
+          {error && <div role="alert" className="rounded-sm bg-red-50 px-3 py-2 text-sm text-red-900">{error}</div>}
+          {notice && <div role="status" className="rounded-sm bg-green-50 px-3 py-2 text-sm text-green-900">{notice}</div>}
+          <button type="submit" disabled={busy} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-ck-blue text-sm font-medium uppercase tracking-wide text-white hover:bg-ck-blue-dark disabled:opacity-60">
+            {busy ? <><Spinner /> Please wait…</> : mode === 'signin' ? 'Log in' : 'Sign up'}
           </button>
           <div className="text-center text-sm text-[#666]">
             {mode === 'signin' ? (

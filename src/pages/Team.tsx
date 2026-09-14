@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MailWarning, RefreshCw, Trash2, UserPlus } from 'lucide-react'
+import { MailCheck, MailWarning, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react'
 import { useStore } from '../store'
-import { Avatar, Badge, Button, Modal, PageHeader, Spinner, cn } from '../components/ui'
+import { Avatar, Badge, Button, EmptyState, Modal, PageHeader, Spinner, cn } from '../components/ui'
+import { useFeedback } from '../components/feedback'
 import { InviteMemberModal, InviteResults } from '../components/InviteMemberModal'
 import { getSmtpSettings, sendInvites, type InviteRow } from '../lib/invites'
 import type { Member, Role } from '../types'
@@ -11,8 +12,11 @@ import { entrySeconds, formatDuration } from '../lib/time'
 const ROLES: Role[] = ['Owner', 'Admin', 'Manager', 'Member']
 type Filter = 'all' | 'active' | 'invited'
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
 export default function Team() {
   const { state, dispatch, currentUser, can, workspace } = useStore()
+  const { confirm, notify } = useFeedback()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [filter, setFilter] = useState<Filter>('all')
   const [resending, setResending] = useState<string[]>([])
@@ -39,13 +43,36 @@ export default function Team() {
     setResent((prev) => (prev ? prev.map((r) => rows.find((x) => x.member.id === r.member.id) ?? r) : rows))
   }
 
+  const remove = async (m: Member) => {
+    const pending = m.status === 'Pending'
+    const counts = [
+      { n: state.timeOffRequests.filter((r) => r.memberId === m.id).length, label: 'time off request' },
+      { n: state.approvals.filter((r) => r.memberId === m.id).length, label: 'approval' },
+      { n: state.schedules.filter((r) => r.memberId === m.id).length, label: 'schedule' },
+    ].filter((c) => c.n)
+    const lost = counts.map((c) => plural(c.n, c.label))
+    const lostText = lost.length > 1 ? `${lost.slice(0, -1).join(', ')} and ${lost[lost.length - 1]}` : lost[0]
+    const lostTotal = counts.reduce((a, c) => a + c.n, 0)
+    const ok = await confirm(pending
+      ? { title: `Revoke the invitation for ${m.email}?`, message: 'Their invitation link stops working. You can invite them again later.', confirmLabel: 'Revoke invitation', danger: true }
+      : {
+          title: `Remove ${m.name} from the workspace?`,
+          message: `They lose access to ${workspace.name}. Their time entries are kept${lostText ? `; their ${lostText} ${lostTotal === 1 ? 'is' : 'are'} deleted` : ''}.`,
+          confirmLabel: 'Remove member',
+          danger: true,
+        })
+    if (!ok) return
+    dispatch({ type: 'member/delete', id: m.id })
+    notify(pending ? `Invitation for ${m.email} revoked` : `${m.name} removed from the workspace`)
+  }
+
   const tracked = (id: string) => state.entries.filter((e) => e.userId === id).reduce((a, e) => a + entrySeconds(e), 0)
   const cur = state.settings.currency
 
   return (
     <div>
       <PageHeader title="Team">
-        {can.admin && <Button onClick={() => setInviteOpen(true)}><UserPlus size={16} /> Invite members</Button>}
+        {can.admin && <Button onClick={() => setInviteOpen(true)}><UserPlus size={16} aria-hidden="true" /> Invite members</Button>}
       </PageHeader>
 
       {can.admin && emailOff && (
@@ -73,78 +100,85 @@ export default function Team() {
         </div>
         {can.admin && invited.length > 1 && (
           <Button variant="outline" size="sm" disabled={resending.length > 0} onClick={() => resend(invited)}>
-            {resending.length > 0 ? <Spinner size={12} /> : <RefreshCw size={13} />} Resend all {invited.length} invitations
+            {resending.length > 0 ? <Spinner size={12} /> : <RefreshCw size={13} aria-hidden="true" />} Resend all {invited.length} invitations
           </Button>
         )}
       </div>
 
       <div className="ck-card overflow-x-auto">
-        <table className="ck-table w-full min-w-[960px]">
-          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Billable rate ({cur})</th><th>Cost rate ({cur})</th><th>Hours / day</th><th className="text-right">Tracked</th><th>Status</th><th className="w-12"><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>
-            {shown.length === 0 && (
-              <tr><td colSpan={9} className="py-10 text-center text-[#666]">{filter === 'invited' ? 'No open invitations. Everyone has joined.' : 'No members here yet.'}</td></tr>
-            )}
-            {shown.map((m) => {
-              const isMe = m.id === currentUser.id
-              const isResending = resending.includes(m.id)
-              const patch = (p: Partial<typeof m>) => dispatch({ type: 'member/update', id: m.id, patch: p })
-              return (
-                <tr key={m.id} className="hover:bg-ck-bg/40">
-                  <td>
-                    <span className="inline-flex items-center gap-2"><Avatar name={m.name} size={28} /> {m.name} {isMe && <span className="text-xs text-ck-muted">(you)</span>}</span>
-                  </td>
-                  <td className="text-[#666]">{m.email}</td>
-                  <td>
-                    <select className="ck-select h-8" aria-label={`Role of ${m.name}`} value={m.role} disabled={!can.admin || m.role === 'Owner'} onChange={(e) => patch({ role: e.target.value as Role })}>
-                      {ROLES.map((r) => <option key={r} value={r} disabled={r === 'Owner'}>{r}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <input type="number" min={0} className="ck-input h-8 w-24" aria-label={`Billable rate of ${m.name}`} disabled={!can.admin} placeholder={`${state.settings.hourlyRate}`} value={m.hourlyRate ?? ''} onChange={(e) => patch({ hourlyRate: e.target.value === '' ? null : Number(e.target.value) })} />
-                  </td>
-                  <td>
-                    <input type="number" min={0} className="ck-input h-8 w-24" aria-label={`Cost rate of ${m.name}`} disabled={!can.admin} placeholder="0" value={m.costRate ?? ''} onChange={(e) => patch({ costRate: e.target.value === '' ? null : Number(e.target.value) })} />
-                  </td>
-                  <td>
-                    <input type="number" min={0} max={24} step={0.5} className="ck-input h-8 w-20" aria-label={`Hours per day of ${m.name}`} disabled={!can.admin} value={m.workingHours} onChange={(e) => patch({ workingHours: Number(e.target.value) || 0 })} />
-                  </td>
-                  <td className="text-right font-mono tabular-nums">{formatDuration(tracked(m.id), state.settings.durationFormat)}</td>
-                  <td>
-                    {m.status === 'Active' ? <Badge tone="green">Active</Badge> : (
-                      <span className="inline-flex items-center gap-2">
-                        <Badge tone="orange">Invited</Badge>
-                        {can.admin && (
-                          <button type="button" className="inline-flex items-center gap-1 rounded-sm px-1 py-0.5 text-xs text-ck-blue-dark hover:underline disabled:opacity-60" disabled={isResending} onClick={() => resend([m])} aria-label={`Resend invitation to ${m.email}`}>
-                            {isResending ? <Spinner size={11} /> : <RefreshCw size={12} aria-hidden="true" />} Resend
-                          </button>
-                        )}
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-center">
-                    {/* an Owner row without an account is a leftover duplicate and can go */}
-                    {can.admin && !isMe && (m.role !== 'Owner' || !m.authUserId) && (
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ck-muted transition-colors hover:bg-red-50 hover:text-ck-red"
-                        aria-label={`Remove ${m.name}`}
-                        title="Remove from workspace"
-                        onClick={() => confirm(`Remove ${m.name} from the workspace? They lose access, and their time off, approvals and schedules are removed too.`) && dispatch({ type: 'member/delete', id: m.id })}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        {shown.length === 0 ? (
+          <EmptyState
+            icon={filter === 'invited' ? <MailCheck size={40} /> : <Users size={40} />}
+            title={filter === 'invited' ? 'No open invitations' : 'No members here yet'}
+            hint={filter === 'invited' ? 'Everyone you invited has joined.' : undefined}
+            action={filter !== 'all' ? <Button variant="outline" onClick={() => setFilter('all')}>Show all members</Button> : undefined}
+          />
+        ) : (
+          <table className="ck-table w-full min-w-[960px]">
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Billable rate ({cur})</th><th>Cost rate ({cur})</th><th>Hours / day</th><th className="text-right">Tracked</th><th>Status</th><th className="w-12"><span className="sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              {shown.map((m) => {
+                const isMe = m.id === currentUser.id
+                const isResending = resending.includes(m.id)
+                const patch = (p: Partial<typeof m>) => dispatch({ type: 'member/update', id: m.id, patch: p })
+                return (
+                  <tr key={m.id} className="hover:bg-ck-bg/40">
+                    <td>
+                      <span className="inline-flex items-center gap-2"><Avatar name={m.name} size={28} /> {m.name} {isMe && <span className="text-xs text-ck-muted">(you)</span>}</span>
+                    </td>
+                    <td className="text-[#666]">{m.email}</td>
+                    <td>
+                      <select className="ck-select h-8" aria-label={`Role of ${m.name}`} value={m.role} disabled={!can.admin || m.role === 'Owner'} onChange={(e) => patch({ role: e.target.value as Role })}>
+                        {ROLES.map((r) => <option key={r} value={r} disabled={r === 'Owner'}>{r}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <input type="number" min={0} className="ck-input h-8 w-24" aria-label={`Billable rate of ${m.name}`} disabled={!can.admin} placeholder={`${state.settings.hourlyRate}`} value={m.hourlyRate ?? ''} onChange={(e) => patch({ hourlyRate: e.target.value === '' ? null : Number(e.target.value) })} />
+                    </td>
+                    <td>
+                      <input type="number" min={0} className="ck-input h-8 w-24" aria-label={`Cost rate of ${m.name}`} disabled={!can.admin} placeholder="0" value={m.costRate ?? ''} onChange={(e) => patch({ costRate: e.target.value === '' ? null : Number(e.target.value) })} />
+                    </td>
+                    <td>
+                      <input type="number" min={0} max={24} step={0.5} className="ck-input h-8 w-20" aria-label={`Hours per day of ${m.name}`} disabled={!can.admin} value={m.workingHours} onChange={(e) => patch({ workingHours: Number(e.target.value) || 0 })} />
+                    </td>
+                    <td className="text-right font-mono tabular-nums">{formatDuration(tracked(m.id), state.settings.durationFormat)}</td>
+                    <td>
+                      {m.status === 'Active' ? <Badge tone="green">Active</Badge> : (
+                        <span className="inline-flex items-center gap-2">
+                          <Badge tone="orange">Invited</Badge>
+                          {can.admin && (
+                            <button type="button" className="inline-flex items-center gap-1 rounded-sm px-1 py-0.5 text-xs text-ck-blue-dark hover:underline disabled:opacity-60" disabled={isResending} onClick={() => resend([m])} aria-label={`Resend invitation to ${m.email}`}>
+                              {isResending ? <Spinner size={11} /> : <RefreshCw size={12} aria-hidden="true" />} Resend
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-center">
+                      {/* an Owner row without an account is a leftover duplicate and can go */}
+                      {can.admin && !isMe && (m.role !== 'Owner' || !m.authUserId) && (
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ck-muted transition-colors hover:bg-red-50 hover:text-ck-red"
+                          aria-label={m.status === 'Pending' ? `Revoke invitation for ${m.email}` : `Remove ${m.name}`}
+                          title={m.status === 'Pending' ? 'Revoke invitation' : 'Remove from workspace'}
+                          onClick={() => remove(m)}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
       <p className="mt-3 text-xs text-[#666]">
         Billable rate is what you charge for the member's time; cost rate is what the member costs you. Reports use both to show profit.
         Invited people join when they open their invitation link; Resend emails them a new one.
+        {!can.admin && ' Only owners and admins can change roles and rates.'}
       </p>
 
       <InviteMemberModal open={inviteOpen} onClose={() => setInviteOpen(false)} />

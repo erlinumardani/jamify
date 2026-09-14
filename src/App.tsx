@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { StoreProvider } from './store'
 import { AuthProvider } from './auth'
 import Layout from './components/Layout'
+import { FeedbackProvider } from './components/feedback'
 import InvitePage from './pages/Invite'
 import TimeTracker from './pages/TimeTracker'
 import Timesheet from './pages/Timesheet'
@@ -30,6 +31,7 @@ export default function App() {
       {(user) => (
         <StoreProvider user={user}>
           <BrowserRouter>
+            <FeedbackProvider>
             <Routes>
               <Route element={<Layout />}>
                 <Route index element={<Navigate to="/tracker" replace />} />
@@ -53,6 +55,7 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/tracker" replace />} />
               </Route>
             </Routes>
+            </FeedbackProvider>
           </BrowserRouter>
         </StoreProvider>
       )}

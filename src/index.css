@@ -2,8 +2,9 @@
 
 @theme {
   --font-sans: "Roboto", "Helvetica Neue", Arial, sans-serif;
-  --color-ck-blue: #03a9f4;
-  --color-ck-blue-dark: #0288d1;
+  /* primary blue carries white text and link text, so it has to reach 4.5:1 (WCAG AA) */
+  --color-ck-blue: #0277bd;
+  --color-ck-blue-dark: #01579b;
   --color-ck-blue-light: #e6f6fd;
   --color-ck-bg: #f2f6f8;
   --color-ck-border: #c6d2d9;
@@ -11,9 +12,9 @@
   --color-ck-text: #333333;
   /* #757575 keeps secondary text at 4.6:1 on white (WCAG AA) */
   --color-ck-muted: #757575;
-  --color-ck-red: #f44336;
-  --color-ck-red-dark: #d32f2f;
-  --color-ck-green: #4caf50;
+  --color-ck-red: #d32f2f;
+  --color-ck-red-dark: #b71c1c;
+  --color-ck-green: #2e7d32;
   --color-ck-sidebar: #ffffff;
 }
 
@@ -44,6 +45,8 @@ input::placeholder, textarea::placeholder {
   color: #999;
 }
 
+/* component classes live in a layer so utilities next to them (h-8, pl-8, w-24…) still apply */
+@layer components {
 .ck-input {
   @apply h-9 w-full rounded-sm border border-ck-border bg-white px-3 text-sm text-ck-text outline-none transition-colors focus:border-ck-blue;
 }
@@ -58,12 +61,6 @@ input::placeholder, textarea::placeholder {
 
 .ck-input[aria-invalid="true"], .ck-select[aria-invalid="true"] {
   @apply border-ck-red focus:border-ck-red;
-}
-
-/* keyboard focus is always visible; mouse clicks don't draw a ring */
-:where(button, a, summary, [role="switch"], input[type="radio"], input[type="checkbox"]):focus-visible {
-  outline: 2px solid var(--color-ck-blue);
-  outline-offset: 2px;
 }
 
 .ck-card {
@@ -82,6 +79,13 @@ input::placeholder, textarea::placeholder {
 }
 .ck-table tr:last-child td {
   border-bottom: 0;
+}
+}
+
+/* keyboard focus is always visible (outside the layer, so outline-none can't remove it); mouse clicks don't draw a ring */
+:where(button, a, summary, [role="switch"], input[type="radio"], input[type="checkbox"]):focus-visible {
+  outline: 2px solid var(--color-ck-blue);
+  outline-offset: 2px;
 }
 
 @keyframes ck-pulse {

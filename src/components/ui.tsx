@@ -100,6 +100,12 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; width?: number
 }) {
   const titleId = useId()
+  // hand keyboard focus back to whatever opened the dialog
+  useEffect(() => {
+    if (!open) return
+    const opener = document.activeElement as HTMLElement | null
+    return () => opener?.focus?.()
+  }, [open])
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -192,12 +198,13 @@ export function Avatar({ name, size = 32, className, src }: { name: string; size
   )
 }
 
-export function Badge({ children, tone = 'gray' }: { children: ReactNode; tone?: 'gray' | 'blue' | 'green' | 'orange' }) {
+export function Badge({ children, tone = 'gray' }: { children: ReactNode; tone?: 'gray' | 'blue' | 'green' | 'orange' | 'red' }) {
   const tones = {
-    gray: 'bg-black/5 text-[#666]',
+    gray: 'bg-black/5 text-[#555]',
     blue: 'bg-ck-blue-light text-ck-blue-dark',
-    green: 'bg-green-50 text-green-700',
-    orange: 'bg-orange-50 text-orange-700',
+    green: 'bg-green-50 text-green-800',
+    orange: 'bg-orange-50 text-orange-800',
+    red: 'bg-red-50 text-red-800',
   }
   return <span className={cn('inline-block rounded-sm px-2 py-0.5 text-xs font-medium', tones[tone])}>{children}</span>
 }
@@ -206,35 +213,75 @@ export function ProjectDot({ color, size = 8 }: { color: string; size?: number }
   return <span className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, background: color }} />
 }
 
-export function EmptyState({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
+export function EmptyState({ title, hint, action, icon }: { title: string; hint?: ReactNode; action?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      <div className="text-base font-medium text-[#666]">{title}</div>
-      {hint && <div className="max-w-sm text-sm text-ck-muted">{hint}</div>}
+      {icon && <div className="mb-1 text-ck-border" aria-hidden="true">{icon}</div>}
+      <div className="text-base font-medium text-[#555]">{title}</div>
+      {hint && <div className="max-w-sm text-sm text-[#666]">{hint}</div>}
       {action && <div className="mt-3">{action}</div>}
     </div>
   )
 }
 
-export function PageHeader({ title, children }: { title: string; children?: ReactNode }) {
+export function PageHeader({ title, description, children }: { title: string; description?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-2xl font-light text-[#666]">{title}</h1>
+    <div className={cn('mb-5 flex flex-wrap justify-between gap-3', description ? 'items-end' : 'items-center')}>
+      <div className="min-w-0">
+        <h1 className="text-2xl font-light text-[#555]">{title}</h1>
+        {description && <p className="mt-1 max-w-2xl text-sm text-[#666]">{description}</p>}
+      </div>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
   )
 }
 
+/** Props a Field hands to its control so the label, help text and error are announced with it. */
+export interface FieldControlProps {
+  id: string
+  'aria-describedby'?: string
+  'aria-invalid'?: true
+}
+
+/** Label + control + help or error text, wired together by id. */
+export function Field({ label, help, error, className, children }: {
+  label: ReactNode
+  help?: ReactNode
+  error?: string | null
+  className?: string
+  children: (control: FieldControlProps) => ReactNode
+}) {
+  const id = useId()
+  const msgId = `${id}-msg`
+  const message = error || help
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="ck-label">{label}</label>
+      {children({ id, 'aria-describedby': message ? msgId : undefined, 'aria-invalid': error ? true : undefined })}
+      {error
+        ? <p id={msgId} role="alert" className="mt-1 text-xs text-ck-red">{error}</p>
+        : help ? <p id={msgId} className="mt-1 text-xs text-[#666]">{help}</p> : null}
+    </div>
+  )
+}
+
+/** Placeholder block shown while content loads. */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden="true" className={cn('animate-pulse rounded-sm bg-ck-border-light', className)} />
+}
+
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string }[]; value: T; onChange: (t: T) => void }) {
   return (
-    <div className="flex gap-1 border-b border-ck-border-light">
+    <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-ck-border-light">
       {tabs.map((t) => (
         <button
           key={t.id}
           type="button"
+          role="tab"
+          aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            '-mb-px border-b-2 px-4 py-2.5 text-sm font-medium uppercase tracking-wide transition-colors',
+            '-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium uppercase tracking-wide transition-colors',
             value === t.id ? 'border-ck-blue text-ck-blue' : 'border-transparent text-ck-muted hover:text-ck-text',
           )}
         >
